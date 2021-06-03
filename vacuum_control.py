@@ -1,6 +1,6 @@
 import serial, io, sys, os, logging, time, datetime, threading, Queue, subprocess
 
-# plotting imports
+# Plotting imports.
 import matplotlib.dates as mdates
 from matplotlib.ticker import AutoMinorLocator
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT
@@ -8,22 +8,25 @@ from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 import numpy as np
 
-# GUI imports
+# GUI imports.
 from PyQt4 import QtGui,QtCore
 import adminGUI
-
-# set up logging. Change level=logging.INFO to level=logging.DEBUG to show raw serial communication
-LOG_FILENAME = 'TIC.log'
+	
+# Set up logging. Change level=logging.INFO to level=logging.DEBUG to show raw 
+# serial communication.
+LOG_FILENAME = './TIC_logs/generalLog_' + \
+	       datetime.datetime.now().strftime('%Y%m%d') + \
+	       '.log'
 	
 logging.basicConfig(
-    format='%(asctime)s, %(levelname)s, %(message)s',
-    level=logging.INFO,
-    datefmt='%Y-%m-%d %H:%M:%S',
+	format='%(asctime)s, %(levelname)s, %(message)s',
+	level=logging.INFO,
+	datefmt='%Y-%m-%d %H:%M:%S',
 	filename=LOG_FILENAME)
 
 logr = logging.getLogger(LOG_FILENAME)
 
-# link printed and logging messages
+# Link printed and logging messages.
 def printInfo(message):
 	logr.info(message)
 	print message
@@ -43,16 +46,18 @@ def printDebug(message):
 	else:
 		pass
 
-# set display options for navigation toolbar
+# Set display options for navigation toolbar.
 class NavigationToolbar(NavigationToolbar2QT):
 	def __init__(self, *args, **kwargs):
 		super(NavigationToolbar, self).__init__(*args, **kwargs)
-		self.layout().takeAt(6)  # removes weird edit parameters button
+		# Removes weird edit parameters button.
+		self.layout().takeAt(6)  
 
-	# only display the buttons we need
-	toolitems = [t for t in NavigationToolbar2QT.toolitems if t[0] in ('Home', 'Forward', 'Back', 'Pan', 'Zoom', 'Save')]
+	# Only display the buttons we need.
+	toolitems = [t for t in NavigationToolbar2QT.toolitems if t[0] in (
+				'Home', 'Forward', 'Back', 'Pan', 'Zoom', 'Save')]
 
-# set terminal output to GUI textBox
+# Set terminal output to GUI textBox.
 class EmittingStream(QtCore.QObject):
 	textWritten=QtCore.pyqtSignal(str) 
 	
@@ -60,32 +65,28 @@ class EmittingStream(QtCore.QObject):
 		self.textWritten.emit(str(text))
 
 #--------------------------------------------------------------------
-#GUI CLASSES
+# GUI CLASSES
 #--------------------------------------------------------------------
 
-# graphing window GUI class
-class SecondUiClass(QtGui.QMainWindow):
-	# class variables	
-	pressure = np.array([])
-	ion_pressure = np.array([])
-	date = np.array ([])
-	import_pressure = np.array ([])
-	import_date = np.array ([])
+# Graphing window GUI class.
+class SecondUiClass(QtGui.QMainWindow):	
 	Log_pressure = False
 	Import = False
+	filename = None
+	import_filename = None
 
 	def __init__(self, parent=None):
-		super(SecondUiClass,self).__init__(parent)
-		# create window
-		self._main = QtGui.QWidget()
-		self.setCentralWidget(self._main)
-		self.layout = QtGui.QVBoxLayout(self._main)
+		super(SecondUiClass, self).__init__(parent)
+		# Create the window.
+		self.main = QtGui.QWidget()
+		self.setCentralWidget(self.main)
+		self.layout = QtGui.QVBoxLayout(self.main)
 		self.setGeometry(100, 100, 1000, 600)
-		self.setWindowTitle("FHiRE Vacuum Controller - Graphing Window")
+		self.setWindowTitle('FHiRE Vacuum Controller - Graphing Window')
 
-		#set up action menu
-		actionPressure = QtGui.QAction("Graph Pressure", self)
-		actionLog_Pressure = QtGui.QAction("Graph Log Pressure", self)	
+		# Set up the action menu.
+		actionPressure = QtGui.QAction('Graph Pressure', self)
+		actionLog_Pressure = QtGui.QAction('Graph Log Pressure', self)	
 		actionPressure.triggered.connect(self.PlotPressure)
 		actionLog_Pressure.triggered.connect(self.PlotLogPressure)
 
@@ -94,39 +95,46 @@ class SecondUiClass(QtGui.QMainWindow):
 		fileMenu.addAction(actionPressure)
 		fileMenu.addAction(actionLog_Pressure)
 
-		# set up figure
+		# Set up the figure.
 		self.figure = Figure()
 		self.canvas = FigureCanvas(self.figure)
 		self.layout.addWidget(self.canvas)
 		self.toolbar=NavigationToolbar(self.canvas, self)
 		self.addToolBar(QtCore.Qt.TopToolBarArea, self.toolbar)
 		
-	# main plot process
-	def Plot(self, dat_file):
-		# set up graph	
+	# Main plotting process.
+	def Plot(self, importing):
+		# Set up the graph.
 		self.ax = self.figure.add_subplot(111)	
 		self.ax.hold(False)
 		
-		# check if import or live data
-		if dat_file == False:
-			self.ax.plot(self.date, self.pressure, 'r-')
+		# Check if importing or using live data.
+		self.importing = importing
+		if self.importing == False:
+			open_file = self.filename
 		else:
-			self.Import = True
-			self.ax.plot(self.import_date, self.import_pressure, 'r-')
+			open_file = self.import_filename
+			if self.import_filename == None:
+				printInfo("Please import a pressure log file.")
+
+		# Graph pressure vs. time. 
+		date, pressure = np.loadtxt(open_file, unpack=True, skiprows=1)
+		self.ax.plot(date, pressure, 'r-')
 		
-		# format axes
+		# Format axes.
+		self.ax.set_title("Graphing: %s" %open_file)
 		self.ax.set_xlabel('Time (h:m:s)')
-		self.ax.set_ylabel('Pressure (Torr)')
+		self.ax.set_ylabel('Pressure (mbar)')
 		myFmt = mdates.DateFormatter('%H:%M:%S')
 		self.ax.xaxis.set_major_formatter(myFmt)
 		self.ax.xaxis.set_minor_locator(AutoMinorLocator())
 		self.ax.yaxis.set_minor_locator(AutoMinorLocator())
 
-		# plot!
+		# Display the graph.
 		self.canvas.draw()
 		self.canvas.flush_events()
 
-	# modify plot to show pressure or log pressure
+	# Modify the plot to show pressure or log pressure.
 	def PlotPressure(self):
 		self.Log_pressure = False
 		self.updateThread()	
@@ -135,28 +143,26 @@ class SecondUiClass(QtGui.QMainWindow):
 		self.Log_pressure = True
 		self.updateThread()
 
-	# thread that updates graph after creation
+	# This thread allows updates to be made to the graph after creation.
+	# Used for updating y axis. 
 	def updateThread(self):	
 		update_thread = threading.Thread(target=self.UpdatePlot)
+		update_thread.setDaemon(True)
 		update_thread.start()
 
-	# update graph function called from thread
+	# Update the graph. Used for autoplotting.
 	def UpdatePlot(self):
-		# check if graphing imported data, live data, log pressure or pressure
-		if self.Log_pressure == False and self.Import == False:		
-			self.ax.plot(self.date, self.pressure, 'r-')
-			self.ax.set_ylabel('Pressure (Torr)')
-		elif self.Log_pressure == False and self.Import == True:		
-			self.ax.plot(self.import_date, self.import_pressure, 'r-')
-			self.ax.set_ylabel('Pressure (Torr)')
-		elif self.Log_pressure == True and self.Import == False:		
-			self.ax.plot(self.date, np.log10(self.pressure), 'r-')
-			self.ax.set_ylabel('Log Pressure (Torr)')
+		date, pressure = np.loadtxt(self.filename, unpack=True, skiprows=1)
+
+		if self.Log_pressure == True:
+			pressure = np.log10(pressure)
+			self.ax.set_ylabel('Log Pressure (mbar)')
 		else:
-			self.ax.plot(self.import_date, np.log10(self.import_pressure), 'r-')
-			self.ax.set_ylabel('Log Pressure (Torr)')	
-		
-		# format axes
+			self.ax.set_ylabel('Pressure (mbar)')
+
+		self.ax.plot(date, pressure, 'r-')
+
+		self.ax.set_title("Graphing: %s" %self.filename)
 		self.ax.set_xlabel('Time (h:m:s)')
 		myFmt = mdates.DateFormatter('%I:%M:%S')
 		self.ax.xaxis.set_major_formatter(myFmt)
@@ -165,71 +171,122 @@ class SecondUiClass(QtGui.QMainWindow):
 		self.ax.relim()
 		self.ax.autoscale_view()
 		self.toolbar.update()
+
 		self.canvas.draw()
 		self.canvas.flush_events()
 
-# main window GUI class (inherits from qt designer's adminGUI.ui or userGUI.ui)
-# change adminGUI to userGUI to switch interfaces
+# Main window GUI class (inherits from qt designer's adminGUI.ui or userGUI.ui).
+# Change adminGUI to userGUI to switch interfaces.
 class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 
 	def __init__(self):
 		super(MainUiClass,self).__init__()
 		self.setupUi(self)
-		
-		# start queue (adds button presses to a queue and calls functions one at a time so the GUI doesn't freeze up)
+
+		self.importing = False
+
+		# Creates instance of the graphing window class.
+		self.graph_window = SecondUiClass()
+
+		# Start queue capability (adds button presses to a queue 
+		# and calls functions one at a time so the GUI doesn't freeze up.)
 		self.q = Queue.Queue()
 		self.queueThread()
 
-		# send terminal output to textBox
-		sys.stdout=EmittingStream(textWritten=self.normalOutputWritten)
-		# comment out to send errors to terminal for troublshooting
-		#sys.stderr=EmittingStream(textWritten=self.normalOutputWritten)
+		# Showing that the manual ON and OFF pump buttons are no longer
+		# being used, they're obsolete. They've been replaced by 
+		# checkable buttons at the top of the GUI. 
+		self.pump_button_on.setText('')
+		self.pump_button_off.setText('')
+		self.ion_button_on.setText('')
+		self.ion_button_off.setText('')
+		self.neg_button_on.setText('')
+		self.neg_button_off.setText('')
+		self.turbo_button_on.setText('')
+		self.turbo_button_off.setText('')
 
-		# start threads and connect buttons
+		# Send terminal outputs to the GUI textBox.
+		sys.stdout = EmittingStream(textWritten=self.normalOutputWritten)
+		# Comment out to send errors to terminal for troublshooting.
+		#sys.stderr = EmittingStream(textWritten=self.normalOutputWritten)
+
+		printInfo("Window opened.")
+
+		# Start threads and connect buttons.
 		self.createTICThread()
 		self.connectSignals()	
 		
-		# turn off to run code without connection to controllers
+		# Turn off following lines to run code without connection 
+		# to controllers. All function calls but self.cycleThread() 
+		# are called once at startup here to avoid the delays in 
+		# self.cycleThread.
 		time.sleep(1)
-		self.tic.Collect_data()
+		self.Create_dat()
+		self.Collect_data()
 		self.Backing_check()
 		self.Ion_check()
 		self.Turbo_check()
+
 		self.cycleThread()
 		
-	# Disable printing
+	# Functionality to disable printing.
 	def blockPrint(self):
 		sys.stdout = open(os.devnull, 'w')
 
-	# Restore printing
+	# Functionality to restore printing.
 	def enablePrint(self):
 		sys.stdout=EmittingStream(textWritten=self.normalOutputWritten)
 
-	# connect buttons not realated to workers
+	#
+	# Threading setup.
+	#
+
+	# Connect buttons not realated to workers.
 	def connectSignals(self):
-		# set up pump switches
+		# Set up pump switches.
 		self.ion_switch.setCheckable(True)
-		self.ion_switch.setStyleSheet("QPushButton#ion_switch {background-color : #e57373; border-style: inset; border-width: 2px; border-radius: 10px; padding: 6px;}" "QPushButton#ion_switch:checked {background-color: #8bc34a; border-style: outset;}")  
+		self.ion_switch.setStyleSheet(
+				'QPushButton#ion_switch {background-color : ' \ 
+				'#e57373; border-style: inset; border-width: ' \ 
+				'2px; border-radius: 10px; padding: 6px;}' \
+				'QPushButton#ion_switch:checked ' \ 
+				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.neg_switch.setCheckable(True)
-		self.neg_switch.setStyleSheet("QPushButton#neg_switch {background-color : #e57373; border-style: inset; border-width: 2px; border-radius: 10px; padding: 6px;}" "QPushButton#neg_switch:checked {background-color: #8bc34a; border-style: outset;}")  
+		self.neg_switch.setStyleSheet(
+				'QPushButton#neg_switch {background-color : ' \ 
+				'#e57373; border-style: inset; border-width: ' \ 
+				'2px; border-radius: 10px; padding: 6px;}' \
+				'QPushButton#neg_switch:checked ' \ 
+				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.backing_switch.setCheckable(True)
-		self.backing_switch.setStyleSheet("QPushButton#backing_switch {background-color : #e57373; border-style: inset; border-width: 2px; border-radius: 10px; padding: 6px;}" "QPushButton#backing_switch:checked {background-color: #8bc34a; border-style: outset;}") 
+		self.backing_switch.setStyleSheet(
+				'QPushButton#neg_switch {background-color : ' \ 
+				'#e57373; border-style: inset; border-width: ' \ 
+				'2px; border-radius: 10px; padding: 6px;}' \
+				'QPushButton#neg_switch:checked ' \ 
+				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.turbo_switch.setCheckable(True)		
-		self.turbo_switch.setStyleSheet("QPushButton#turbo_switch {background-color : #e57373; border-style: inset; border-width: 2px; border-radius: 10px; padding: 6px;}" "QPushButton#turbo_switch:checked {background-color: #8bc34a; border-style: outset;}") 
+		self.turbo_switch.setStyleSheet(
+				'QPushButton#neg_switch {background-color : ' \ 
+				'#e57373; border-style: inset; border-width: ' \ 
+				'2px; border-radius: 10px; padding: 6px;}' \
+				'QPushButton#neg_switch:checked ' \ 
+				'{background-color: #8bc34a; border-style: outset;}')  
 
-		# buttons and options
+		# Setup functionality to buttons and options.
 		self.ion_switch.clicked.connect(lambda: self.q.put(self.ionSwitch))
 		self.neg_switch.clicked.connect(lambda: self.q.put(self.negSwitch))
 		self.backing_switch.clicked.connect(lambda: self.q.put(self.backingSwitch))
 		self.turbo_switch.clicked.connect(lambda: self.q.put(self.turboSwitch))
-		self.graph.clicked.connect(lambda: self.create_new_window(False))
+		
+		self.graph.clicked.connect(self.create_new_window)
+		
 		self.actionImport.triggered.connect(self.importFile)
 		self.pump_down.clicked.connect(self.pumpDownDialog)
 		self.vent.clicked.connect(self.ventDialog)
-		self.actionExit.triggered.connect(self.Close)
 
 	# Setup the TIC worker object and the tic_thread.
 	def createTICThread(self):
@@ -238,137 +295,109 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.tic.moveToThread(self.tic_thread)
 		self.tic_thread.start()
 
-		# Connect tic worker signals
-		self.gauge_button.clicked.connect(lambda: self.q.put(self.tic.Collect_data))	
-		self.pump_button_on.clicked.connect(lambda: self.q.put(self.tic.Backing_on))
-		self.pump_button_off.clicked.connect(lambda: self.q.put(self.tic.Backing_off))
-		self.turbo_button_on.clicked.connect(lambda: self.q.put(self.tic.Turbo_on))
-		self.turbo_button_off.clicked.connect(lambda: self.q.put(self.tic.Turbo_off))
+		# Connect worker signals for the TIC controller.
+		self.gauge_button.clicked.connect(
+					lambda: self.q.put(self.Collect_data))	
 		self.auto_plot.clicked.connect(lambda: self.q.put(self.autoPlotThreader))
-		self.stop_plot.clicked.connect(lambda: self.q.put(self.tic.Stop_plotting))
-		self.connect(self.tic,QtCore.SIGNAL('block_print'),self.blockPrint)
-		self.connect(self.tic,QtCore.SIGNAL('enable_print'),self.enablePrint)
-		self.connect(self,QtCore.SIGNAL('create_new_window'),self.create_new_window)
-		self.connect(self,QtCore.SIGNAL('update_window'),self.tic.graph_window.UpdatePlot)
-		self.connect(self.tic,QtCore.SIGNAL('backing_on'),self.setBackingTextOn)
-		self.connect(self.tic,QtCore.SIGNAL('backing_off'),self.setBackingTextOff)
-		self.connect(self.tic,QtCore.SIGNAL('turbo_on'),self.setTurboTextOn)
-		self.connect(self.tic,QtCore.SIGNAL('turbo_off'),self.setTurboTextOff)
-		self.connect(self.tic,QtCore.SIGNAL('pressure'),self.setPressure)
-		self.connect(self.tic,QtCore.SIGNAL('ion_pressure'),self.setIonPressure)
+		self.stop_plot.clicked.connect(lambda: self.q.put(self.stop_plotting))
+		self.connect(self.tic, QtCore.SIGNAL('block_print'), self.blockPrint)
+		self.connect(self.tic, QtCore.SIGNAL('enable_print'), self.enablePrint)
+		self.connect(self, QtCore.SIGNAL('create_new_window'), \
+							self.create_new_window)
+		self.connect(self, QtCore.SIGNAL('update_window'), \ 	
+							self.graph_window.UpdatePlot)
+		self.connect(self.tic, QtCore.SIGNAL('backing_on'), self.setBackingTextOn)
+		self.connect(self.tic, QtCore.SIGNAL('backing_off'), self.setBackingTextOff)
+		self.connect(self.tic, QtCore.SIGNAL('turbo_on'), self.setTurboTextOn)
+		self.connect(self.tic, QtCore.SIGNAL('turbo_off'), self.setTurboTextOff)
 
-		# Connect ion worker signals
-		self.ion_button_on.clicked.connect(lambda: self.q.put(self.tic.Ion_on))
-		self.ion_button_off.clicked.connect(lambda: self.q.put(self.tic.Ion_off))
-		self.neg_button_on.clicked.connect(lambda: self.q.put(self.tic.Neg_on))
-		self.neg_button_off.clicked.connect(lambda: self.q.put(self.tic.Neg_off))
-		self.connect(self.tic,QtCore.SIGNAL('block_print'),self.blockPrint)
-		self.connect(self.tic,QtCore.SIGNAL('enable_print'),self.enablePrint)
-		self.connect(self.tic,QtCore.SIGNAL('ion_on'),self.setIonTextOn)
-		self.connect(self.tic,QtCore.SIGNAL('ion_off'),self.setIonTextOff)
-		self.connect(self.tic,QtCore.SIGNAL('neg_on'),self.setNegTextOn)
-		self.connect(self.tic,QtCore.SIGNAL('neg_off'),self.setNegTextOff)
+		# Connect worker signals for the ion pump.
+		self.connect(self.tic, QtCore.SIGNAL('block_print'), self.blockPrint)
+		self.connect(self.tic, QtCore.SIGNAL('enable_print'), self.enablePrint)
+		self.connect(self.tic, QtCore.SIGNAL('ion_on'), self.setIonTextOn)
+		self.connect(self.tic, QtCore.SIGNAL('ion_off'), self.setIonTextOff)
+		self.connect(self.tic, QtCore.SIGNAL('neg_on'), self.setNegTextOn)
+		self.connect(self.tic, QtCore.SIGNAL('neg_off'), self.setNegTextOff)
 	
-	# checks queue and calls functions. Runs indefinitely
+	# Thread that runs the queue.
+	def queueThread(self):
+		queueWorker = threading.Thread(target=self.queueRunner)
+		# Daemon threads will close when application is closed.
+		queueWorker.setDaemon(True)
+		queueWorker.start()
+
+	# Checks queue and calls functions at turn. Runs indefinitely.
 	def queueRunner(self):
 		while True:
 			f = self.q.get()
 			f()
 			self.q.task_done()
 
-	# thread that runs the queue
-	def queueThread(self):
-		queueWorker = threading.Thread(target=self.queueRunner)
-		# daemon thread will close when application is closed
-		queueWorker.setDaemon(True)
-		queueWorker.start()
-
-	# thread that checks pump states and pressure
+	# Thread that checks pump states and pressure.
 	def cycleThread(self):
 		cycle_thread = threading.Thread(target=self.cycleCheck)
 		cycle_thread.setDaemon(True)
 		cycle_thread.start()
 
-	# pump down and vent threads
-	def pumpDownThread(self):	
-		print("pumpDownThread")
+	# Pump down and vent threads.
+	def pumpDownThread(self):
+		self.Collect_data()
 		pumpdown_thread = threading.Thread(target=self.tic.Pump_down)
 		pumpdown_thread.setDaemon(True)
 		pumpdown_thread.start()
 
 	def ventThread(self):	
+		self.Collect_data()
 		vent_thread = threading.Thread(target=self.tic.Vent)
 		vent_thread.setDaemon(True)
 		vent_thread.start()
 
-	# plotting thread
+	# Auto plotting thread.
 	def autoPlotThreader(self):
 		plot_thread = threading.Thread(target=self.Auto_plotter)
+		plot_thread.setDaemon(True)
 		plot_thread.start()	
 
-	# live plotting
-	def Auto_plotter(self):
-		self.tic.plotting = True
-		n = 1
-		while self.tic.plotting == True:
-			if n == 1:		
-				# create dat pressure log with todays date
-				datfile = self.tic.Create_dat()
+	#
+	# Etc. Methods.
+	#
 
-			self.q.put(self.tic.Collect_data)
+	# Setup live plotting.
+	# Since Auto_plotter is run within a thread, signals need to be used
+	# to communicate with the main class. 
+	def Auto_plotter(self):
+		self.autoplotting = True
+		n = 1
+		while self.autoplotting == True:
 			time.sleep(3)
-			self.tic.Update_dat(datfile, self.tic.graph_window.date[-1], self.tic.graph_window.pressure[-1])
-			
-			if n == 2:
-				# call plot window
-				self.emit(QtCore.SIGNAL('create_new_window'),False)
-			
-			elif n > 2:
-				# update plot window
-				self.emit(QtCore.SIGNAL('update_window'),True)
+			if n == 1:
+				self.importing = False
+				self.emit(QtCore.SIGNAL('create_new_window'))
+			else:
+				self.emit(QtCore.SIGNAL('update_window'))
 
 			n += 1
 			printDebug('Sleeping...')
 			time.sleep(30)
 
-	# on/off pump switch configurations
-	def ionSwitch(self):
-		# if ion pump is turned on change to green and 'ON'
-		if self.ion_switch.isChecked():  
-			self.tic.Ion_on()
-        # if ion pump is turned off change to red and 'OFF'
-		else: 
-			self.tic.Ion_off()
+	def stop_plotting(self):
+		self.autoplotting = False
 
-	def setIonTextOn(self):
-		self.ion_switch.setChecked(True)
-		self.ion_switch.setText('ON')
+	# Pulls up new graphing window.
+	def create_new_window(self):
+		printInfo('Plotting...')
+		self.graph_window.show()
+		self.graph_window.Plot(self.importing)
 
-	def setIonTextOff(self):
-		self.ion_switch.setChecked(False)
-		self.ion_switch.setText('OFF')
-
-	def negSwitch(self):
-		# if NEG pump is turned on change to green and 'ON'
-		if self.neg_switch.isChecked():  
-			self.tic.Neg_on()
-        # if NEG pump is turned off change to red and 'OFF'
-		else: 
-			self.tic.Neg_off()
-
-	def setNegTextOn(self):
-		self.neg_switch.setChecked(True)
-		self.neg_switch.setText('ON')
-
-	def setNegTextOff(self):
-		self.neg_switch.setChecked(False)
-		self.neg_switch.setText('OFF')
-		
+	#
+	# On/off pump switch configurations.
+	# If a pump is sucessfully turned  on or off, the tic thread will 
+	# send a signal to change the checkable button accordingly. 
+	# ON = green, OFF = red.
+	#
 	def backingSwitch(self):
-		# if backing pump is turned on change to green and 'ON'
 		if self.backing_switch.isChecked(): 
 			self.tic.Backing_on()
-        # if backing pump is turned off change to red and 'OFF'
 		else: 
 			self.tic.Backing_off()
 
@@ -381,10 +410,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.backing_switch.setText('OFF')
 
 	def turboSwitch(self):
-		# if turbo pump is turned on change to green and 'ON'
 		if self.turbo_switch.isChecked(): 
 			self.tic.Turbo_on()
-        # if turbo pump is turned off change to red and 'OFF'
 		else: 
 			self.tic.Turbo_off()
 
@@ -395,117 +422,128 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	def setTurboTextOff(self):
 		self.turbo_switch.setChecked(False)
 		self.turbo_switch.setText('OFF')
-	
-	# pulls up new graphing window
-	def create_new_window(self, dat_file):
-		printInfo('Plotting...')
-		self.tic.graph_window.show()
-		self.tic.graph_window.Plot(dat_file)
 
-	# pump status checks
+	def ionSwitch(self):
+		if self.ion_switch.isChecked():  
+			self.tic.Ion_on()
+		else: 
+			self.tic.Ion_off()
+
+	def setNegTextOn(self):
+		self.neg_switch.setChecked(True)
+		self.neg_switch.setText('ON')
+
+	def setNegTextOff(self):
+		self.neg_switch.setChecked(False)
+		self.neg_switch.setText('OFF')
+
+	def setIonTextOn(self):
+		self.ion_switch.setChecked(True)
+		self.ion_switch.setText('ON')
+
+	def setIonTextOff(self):
+		self.ion_switch.setChecked(False)
+		self.ion_switch.setText('OFF')
+
+	def negSwitch(self):
+		if self.neg_switch.isChecked():  
+			self.tic.Neg_on()
+		else: 
+			self.tic.Neg_off()
+
+	# Pump status checks.
 	def Backing_check(self):
-		status = self.tic.Backing_check()
+		status = self.tic.Backing_status()
 		if status == '4':
-			printInfo('Backing pump is on')
+			printInfo('Backing pump is on.')
 			self.setBackingTextOn()
 		elif status == '0':
-			printInfo('Backing pump is off') 
+			printInfo('Backing pump is off.') 
 			self.setBackingTextOff()
 		elif status == '1':
-			printInfo('Backing pump is turning on')
+			printInfo('Backing pump is turning on.')
 			self.setBackingTextOn()
 		elif status == '2' or status == '3':
-			printInfo('Backing pump is turning off') 
+			printInfo('Backing pump is turning off.') 
 			self.setBackingTextOff()
 		else:
-			printError('Backing pump state unknown')
+			printError('Backing pump state unknown.')
 
 	def Ion_check(self):
-		ion_status, neg_status = self.tic.Status_check()
+		ion_status, neg_status = self.tic.Ion_status()
 		if ion_status == 'IP ON':
-			printInfo('Ion pump is on')
+			printInfo('Ion pump is on.')
 			self.setIonTextOn()
-			# checks if pressure is low enough for ion pump to be on
+			# Check if pressure is low enough for ion pump to be on.
 			if self.tic.pressure_reading > 1e-5:
-				printWarning('Pressure is too high (> 1e-5 Torr) for ion pump to function')
-				# turns off pump if pressure too high
+				printWarning('Pressure is too high (> 1e-5 Torr) ' \ 
+					     'for ion pump to function')
+				# Turn off pump if pressure too high.
 				self.q.put(self.tic.Ion_off)
-			else:
-				pass
 		elif ion_status == 'IP OFF':
-			printInfo('Ion pump is off')
+			printInfo('Ion pump is off.')
 			self.setIonTextOff()
 		else:
-			printError('Ion pump state unknown')
+			printError('Ion pump state unknown.')
 
-		if any("NP ON" in s for s in neg_status):
-			printInfo('NEG pump is on')
+		if any('NP ON' in s for s in neg_status):
+			printInfo('NEG pump is on.')
 			self.setNegTextOn()
-			# checks if pressure is low enough for neg pump to be on
+			# Checks if pressure is low enough for neg pump to be on.
 			if self.tic.pressure_reading > 1e-4:
-				printWarning('Pressure is too high (> 1e-4 Torr) for NEG pump to function')
+				printWarning('Pressure is too high (> 1e-4 Torr) ' \ 
+					     'for NEG pump to function')
 				self.q.put(self.tic.Neg_off)
-			else:
-				pass
-		elif any("NP OFF" in s for s in neg_status):
-			printInfo('NEG pump is off')
+		elif any('NP OFF' in s for s in neg_status):
+			printInfo('NEG pump is off.')
 			self.setNegTextOff()
 		else:
-			printError('NEG pump state unknown')
+			printError('NEG pump state unknown.')
 
 	def Turbo_check(self):
-		status = self.tic.Turbo_check()
+		status = self.tic.Turbo_status()
 		if status == '4':
-			printInfo('Turbo pump is on')
+			printInfo('Turbo pump is on.')
 			self.setTurboTextOn()
 		elif status == '0':
-			printInfo('Turbo pump is off')
+			printInfo('Turbo pump is off.')
 			self.setTurboTextOff()
 		elif status == '6' or status == '7':
-			printInfo('Turbo pump is braking') 
+			printInfo('Turbo pump is braking.') 
 			self.setTurboTextOff()
 		elif status == '5':
-			printInfo('Turbo pump is accelerating')
+			printInfo('Turbo pump is accelerating.')
 			self.setTurboTextOn()
 		elif status == '1':
-			printInfo('Turbo pump is starting with delay')
+			printInfo('Turbo pump is starting with delay.')
 			self.setTurboTextOn()
 		elif status == '2' or status == '3':
-			printInfo('Turbo pump is stopping with delay')
+			printInfo('Turbo pump is stopping with delay.')
 			self.setTurboTextOff()
 		else:
-			printError('Turbo pump state unknown')
+			printError('Turbo pump state unknown.')
 
-	# cycle that checks status of each pump and checks pressure every 10 seconds. Can change sleep times to optimize GUI when finialized
+	# Loop that checks status of each pump and checks pressure every 10 seconds. 
+	# Can change sleep times to optimize GUI when finialized.
 	def cycleCheck(self):
 		while True:
+			time.sleep(5)
+			self.q.put(self.Collect_data)
 			time.sleep(10)
 			self.q.put(self.Backing_check)
 			time.sleep(10)
 			self.q.put(self.Turbo_check)
 			time.sleep(10)
 			self.q.put(self.Ion_check)
-			time.sleep(10)
-			self.q.put(self.tic.Collect_data)
-		
-	# update text boxes with pressure values
-	def setPressure(self,pressure):
-		self.tic.pressure_reading = float(pressure)
-		self.tic_pressureText.setText(str(self.tic.pressure_reading)+" Torr")
-
-	def setIonPressure(self,pressure):
-		self.tic.ion_pressure_reading = float(pressure)
-		if self.tic.ion_pressure_reading == 0:
-			self.ion_pressureText.setText("Ion Gauge Off")
-		else:
-			self.ion_pressureText.setText(str(self.tic.ion_pressure_reading)+" Torr")
 			
-	# vent warning message
+	# Vent warning message.
 	def ventDialog(self):
 		msg = QtGui.QMessageBox(self.centralwidget)
 		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText("Are you sure you want to vent the system? This will take approximately 4 hours. There is no way to abort a vent procedure.")
-		msg.setWindowTitle("Vent Warning")
+		msg.setText('Are you sure you want to vent the system? ' \ 
+			    'This will take approximately 4 hours. There is ' \ 
+			    'no way to abort a vent procedure.')
+		msg.setWindowTitle('Vent Warning')
 		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
 		msg.setDefaultButton(QtGui.QMessageBox.Cancel)
 		ret = msg.exec_();
@@ -516,67 +554,107 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		elif ret == QtGui.QMessageBox.Cancel:
 			printInfo('Vent procedure canceled...')
 
-	# pump down warning message
+	# Pump down warning message.
 	def pumpDownDialog(self):
 		msg = QtGui.QMessageBox(self.centralwidget)
 		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText("Are you sure you want to pump down the system? This will take approximately 36 hours. You can abort a pump down procedure.")
-		msg.setWindowTitle("Pump Down Warning")
+		msg.setText('Are you sure you want to pump down the system? ' \ 
+			    'This will take approximately 36 hours. You can ' \ 
+			    'abort a pump down procedure if needed.')
+		msg.setWindowTitle('Pump Down Warning')
 		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
 		msg.setDefaultButton(QtGui.QMessageBox.Cancel)
 		ret = msg.exec_();
 
 		if ret == QtGui.QMessageBox.Ok:
 			printInfo('Starting pump down procedure...')			
-			self.pumpDownThread
+			self.pumpDownThread()
 		elif ret == QtGui.QMessageBox.Cancel:
 			printInfo('Pump down canceled...')
 
-		# importing data from a .dat file
+	# Importing data from a .dat file.
 	def importFile(self):
 		printInfo('Select a .dat file to import a pressure log...')
 		dialog = QtGui.QFileDialog		
-		filepath = dialog.getOpenFileName(self, 'Select dat file', '.', 'DAT files(*.dat)')
-		filename = str(filepath.split("/")[-1])
-		
-		try:
-			c = np.loadtxt(filename,unpack=True,delimiter=',',skiprows=1,usecols=(0,1))
-			self.tic.graph_window.import_date = c[0,:]
-			self.tic.graph_window.import_pressure = c[1,:]
-			self.create_new_window(True)
-		# didn't do much testing with error catching. This is just a catch all error message and should be expanded
-		except:
-			printInfo('Pressure log import canceled')
+		filepath = dialog.getOpenFileName(
+				self, 'Select dat file', '.', 'DAT files(*.dat)')
+		self.import_filename = str(filepath.split('/')[-1])
 
-	# close connection
-	def Close(self):
-		self.tic.ser.close()
-		exit()
+		self.importing = True
+		self.graph_window.import_filename = self.import_filename
+		print("Importing pressure log file: %s." %self.import_filename)
+	
+	# Create pressure data log.
+	def Create_dat(self):
+		filename = './pressure_logs/pressureLog_' + \
+				datetime.datetime.now().strftime('%Y%m%d')
+		i = 1
+		while True:
+			if os.path.isfile("%s-%s.dat" %(filename, i)):
+				i += 1
+			else:
+				break
 
-	# Restores sys.stdout and sys.stderr
+		self.filename = filename + '-%s.dat' % i
+		self.graph_window.filename = self.filename
+
+		with open(self.filename, 'w') as pressureLog:
+			pressureLog.seek(0,0)
+			pressureLog.write('Float date	Pressure (Torr)\n')
+		print("Pressure log file created: %s" %self.filename)
+
+	# Read and save gauge data.
+	def Collect_data(self):
+		self.pressure_reading, timestamp = self.tic.Gauge_read()
+		self.ion_pressure_reading = self.tic.Ion_gauge()
+
+		with open(self.filename, 'a') as pressureLog:
+			pressureLog.write('%.6f	%.6e\n' %(timestamp, self.pressure_reading))
+
+		self.tic_pressureText.setText(str(self.pressure_reading) + ' mbar')
+
+		if self.tic.ion_pressure_reading == 0:
+			self.ion_pressureText.setText('Ion Gauge Off')
+		else:
+			self.ion_pressureText.setText(str(self.ion_pressure_reading) + ' mbar')
+
+	# Functionality to restore sys.stdout and sys.stderr.
 	def __del__(self):
 		sys.stdout=sys.__stdout__
 		sys.stderr=sys.__stderr__
 
-	# Write to textBox textEdit
+	# Write to textBox textEdit.
 	def normalOutputWritten(self,text):		
 		self.textEdit.insertPlainText(text)
-		# set scroll bar to focus on new text			
+		# Set scroll bar to focus on new text.
 		sb = self.textEdit.verticalScrollBar()
-		sb.setValue(sb.maximum()- .8 * sb.singleStep())
+		sb.setValue(sb.maximum() - .8 * sb.singleStep())
 
-	# on exit
-	def CloseEvent(self, event):
-		self.Close()
+	# Closing procedure on exit.
+	# **Find appropriate syntax for PyQt4.**
+	# **Need to close any running graphs and nondameon thread.**
+	def closeEvent(self, event):
+		#reply = QtWidgets.QMessageBox.question(self, 'Window Close',
+		#			'Are you sure you want to close the window?',
+		#			QtWidgets.QMessageBox.Yes|QtWidgets.QMessageBox.No,
+		#			QtWidgets.QMessageBox.No)
+		
+		#if reply == QtWidgets.QMessageBox.Yes:
+			#self.tic.ser.close()  # Doesn't call anything.
+		#	print("Window Closed")
+		#	event.accept()
+		#else:
+		#	event.ignore()
+		printInfo("Window closed.")
 
 #--------------------------------------------------------------------
-#SERIAL CLASSES
+# SERIAL CLASSES
 #--------------------------------------------------------------------
 
-# class that communicates with TIC controller and ion pump/neg pump controller
+# Class that communicates with TIC controller and ion pump/neg pump controller.
 class TIC(QtCore.QObject):
-	# base TIC commands
-	TERMINAL = chr(13) #carriage return
+	# Base TIC commands.
+	TERMINAL = chr(13)  # carriage return
 
 	PRECEDING_QUERY = '?'
 	PRECEDING_COMMAND = '!'
@@ -599,9 +677,10 @@ class TIC(QtCore.QObject):
 	nEXT_PUMP = '852'
 	nEXT_VENT = '853'
 
-	# NEXTorr (ion/neg pump) commands - consist of command identifier, carriage return, line feed
+	# NEXTorr (ion/neg pump) commands - consist of command identifier, 
+	# carriage return, line feed.
 	STATUS = 'TS\r\n'
-	PRESSURE = 'Tt\r\n' # in torr
+	PRESSURE = 'Tt\r\n'  # in torr
 	IP_ON = 'G\r\n'
 	IP_OFF = 'B\r\n'
 	NP_ON = 'GN\r\n'
@@ -609,105 +688,139 @@ class TIC(QtCore.QObject):
 
 	def __init__(self, parent=None):
 		super(self.__class__, self).__init__(parent)
-		# Return which USB port the TIC controller is connected
-		#USB = subprocess.check_output("dmesg|grep tty", stderr=subprocess.STDOUT, shell=True)
-		#USBport = "/dev/" + USB[USB.index("pl2303") + 5]		
 
-		# connect to the TIC through serial port
-		# ll /sys/class/tty/ttyUSB* to check port number
 		try:
-			self.ser = serial.Serial(port = '/dev/ttyUSB0',
-						        baudrate=9600,
-						        bytesize=serial.EIGHTBITS,
-						        parity=serial.PARITY_NONE,
-						        stopbits=serial.STOPBITS_ONE,
+			self.ser = serial.Serial(port = '/dev/ttyUSB1',
+							baudrate=9600,
+							bytesize=serial.EIGHTBITS,
+							parity=serial.PARITY_NONE,
+							stopbits=serial.STOPBITS_ONE,
 								timeout=.5)   
 			self.sio = io.TextIOWrapper(io.BufferedRWPair(self.ser, self.ser))
-			printInfo('Connected to TIC Controller')
+			printInfo('Connected to TIC Controller.')
 
 		except:
-			printError('Could not connect to TIC Controller')
+			printError('Could not connect to TIC Controller.')
 
-		# connect to the NEXTorr controller through serial port
+		# Connect to the NEXTorr controller through serial port, 
+		# USB0 is the top port in the middle column.
 		try:
-			self.serIon = serial.Serial(port = '/dev/ttyUSB1',
-										baudrate=115200,
-										bytesize=serial.EIGHTBITS,
-										parity=serial.PARITY_NONE,
-										stopbits=serial.STOPBITS_ONE,
-										timeout=.5)   
+			self.serIon = serial.Serial(port = '/dev/ttyUSB0',
+							baudrate=115200,
+							bytesize=serial.EIGHTBITS,
+							parity=serial.PARITY_NONE,
+							stopbits=serial.STOPBITS_ONE,
+							timeout=.5)   
 
-			self.sioIon = io.TextIOWrapper(io.BufferedRWPair(self.serIon, self.serIon))
-			printInfo('Connected to NEXTorr Power Supply')
+			self.sioIon = io.TextIOWrapper(
+					io.BufferedRWPair(self.serIon, self.serIon))
+			printInfo('Connected to NEXTorr Power Supply.')
 
 		except:
-			printError('Could not connect to NEXTorr Power Supply')
+			printError('Could not connect to NEXTorr Power Supply.')
 
-		# list of TIC commands - consist of preceding identifier, message type, object ID, space, data, cr
-		self.turbo_on = "".join([self.PRECEDING_COMMAND,self.TYPE_COMMAND,self.TURBO_PUMP,self.SEPARATOR,self.ON,self.TERMINAL]) 
-		self.turbo_off = "".join([self.PRECEDING_COMMAND,self.TYPE_COMMAND,self.TURBO_PUMP,self.SEPARATOR,self.OFF,self.TERMINAL]) 
-		self.turbo_check = "".join([self.PRECEDING_QUERY,self.TYPE_VALUE,self.TURBO_PUMP,self.TERMINAL]) 
+		# List of TIC commands - consist of preceding identifier, 
+		# message type, object ID, space, data, cr.
+		self.gauge_read = "".join([
+				self.PRECEDING_QUERY,
+				self.TYPE_VALUE,
+				self.GAUGE_1,
+				self.TERMINAL])
 
-		self.backing_on = "".join([self.PRECEDING_COMMAND,self.TYPE_COMMAND,self.BACKING_PUMP,self.SEPARATOR,self.ON,self.TERMINAL]) 
-		self.backing_off = "".join([self.PRECEDING_COMMAND,self.TYPE_COMMAND,self.BACKING_PUMP,self.SEPARATOR,self.OFF,self.TERMINAL]) 
-		self.backing_check = "".join([self.PRECEDING_QUERY,self.TYPE_VALUE,self.BACKING_PUMP,self.TERMINAL])
+		self.backing_on = "".join([
+				self.PRECEDING_COMMAND,
+				self.TYPE_COMMAND,
+				self.BACKING_PUMP,
+				self.SEPARATOR,
+				self.ON,
+				self.TERMINAL]) 
+		self.backing_off = "".join([
+				self.PRECEDING_COMMAND,
+				self.TYPE_COMMAND,
+				self.BACKING_PUMP,
+				self.SEPARATOR,
+				self.OFF,
+				self.TERMINAL]) 
+		self.backing_check = "".join([
+				self.PRECEDING_QUERY,
+				self.TYPE_VALUE,
+				self.BACKING_PUMP,
+				self.TERMINAL])
 
-		self.gauge_read = "".join([self.PRECEDING_QUERY,self.TYPE_VALUE,self.GAUGE_1,self.TERMINAL])
+		self.turbo_on = "".join([
+				self.PRECEDING_COMMAND,
+				self.TYPE_COMMAND,
+				self.TURBO_PUMP,
+				self.SEPARATOR,
+				self.ON,
+				self.TERMINAL]) 
+		self.turbo_off = "".join([
+				self.PRECEDING_COMMAND,
+				self.TYPE_COMMAND,
+				self.TURBO_PUMP,
+				self.SEPARATOR,
+				self.OFF,
+				self.TERMINAL]) 
+		self.turbo_check = "".join([
+				self.PRECEDING_QUERY,
+				self.TYPE_VALUE,
+				self.TURBO_PUMP,
+				self.TERMINAL]) 
 
-		# instance of graphing window class
-		self.graph_window = SecondUiClass()
-		self.plotting = True
+		self.pressure_reading = None
+		self.ion_pressure_reading = None
 
-		# pressure holder
-		self.pressure_reading = 0
-		self.ion_pressure_reading = 0
-
-	# general TIC write message and read response
+	# General TIC write message and read response.
 	def write_msg(self, message):
-		# writing to the TIC outputs bites so have to suppress write output
-		self.emit(QtCore.SIGNAL('block_print'),'')
+		# Writing to the TIC prints random bites. 
+		# Write outputs suppressed(?) to avoid this.
+		self.emit(QtCore.SIGNAL('block_print'), '')
 		time.sleep(.2)
 		self.sio.write(unicode(message))
 		self.sio.flush()
-		self.emit(QtCore.SIGNAL('enable_print'),'')
+		self.emit(QtCore.SIGNAL('enable_print'), '')
 
-		# read response
+		# Read response.
 		raw_message = self.sio.readline()
 		printDebug(raw_message)
 
-		# parse response
+		# Parse response.
 		try:
 			preceding = raw_message[0]
 			type = raw_message[1]
 			object = raw_message[2:5]
 			data = str(raw_message[5:-1])
-			data = data.strip() #removes blank spaces
+			data = data.strip()  # removes blank spaces
 			terminal = raw_message[-1]
 
-			# possible errors 
-			errors = {'0' : 'No error',
+			# Possible errors.
+			errors = {
+				'0' : 'No error',
 				'1' : 'Invalid command for object ID',
-                '2' : 'Invalid query/command',
-                '3' : 'Missing parameter',
-                '4' : 'Parameter out of range',               
-                '5' : 'Invalid command in current state',
-                '6' : 'Data checksum error',
-                '7' : 'EEPROM read or write error',
-                '8' : 'Operation took too long',
-                '9' : 'Invalid config ID'}
+				'2' : 'Invalid query/command',
+				'3' : 'Missing parameter',
+				'4' : 'Parameter out of range',               
+				'5' : 'Invalid command in current state',
+				'6' : 'Data checksum error',
+				'7' : 'EEPROM read or write error',
+				'8' : 'Operation took too long',
+				'9' : 'Invalid config ID'}
 
-			# log and print errors and updates
+			# Log and print errors and updates.
 			if data != '0' and preceding == self.PRECEDING_REPLY:
 				if object == self.BACKING_PUMP:
-					printError('Backing pump command error ' + data + ': ' + errors[data])
+					printError('Backing pump command error ' + data + \
+						   ': ' + errors[data])
 				elif object == self.nEXT_PUMP:
-					printError('Turbo pump error code ' + data + ': ' + errors[data])
+					printError('Turbo pump error code ' + data + \
+						   ': ' + errors[data])
 			elif data == '0' and preceding == self.PRECEDING_REPLY:
 				if object == self.BACKING_PUMP:
-					printInfo('Backing pump command successful')
+					printInfo('Backing pump command successful.')
 				elif object == self.nEXT_PUMP:
-					printInfo('Turbo pump command successful')
-			# return any necessary info
+					printInfo('Turbo pump command successful.')
+
+			# Return any necessary info.
 			elif object == self.GAUGE_1:
 				return data.split(';')[0]
 			elif object == self.BACKING_PUMP:
@@ -715,10 +828,15 @@ class TIC(QtCore.QObject):
 			elif object == self.TURBO_PUMP:
 				return data.split(';')[0]
 		except: 
-			printError('No response was received from the TIC Controller')
+			printError('No response was received from the TIC Controller.')
 
-	# pump on/off commands
-	### I put checks to make sure pressures are within the desired range before turning off or on each pump. This will have to be changed once the actuator value is active. Add secondary conditions that check if the valve is open/closed ###
+	#
+	# Pump on/off commands.
+	# **Checks add to make sure pressures are within the desired range 
+	# before turning off or on each pump. This will have to be changed 
+	# once the actuator value is active. Add secondary conditions that 
+	# check if the valve is open/closed**
+	#
 	def Backing_on(self):
 		printInfo('Turning backing pump on...')
 		self.emit(QtCore.SIGNAL('backing_on'),'')
@@ -734,7 +852,7 @@ class TIC(QtCore.QObject):
 			printWarning('Pressure too low to turn off backing pump')	
 			self.emit(QtCore.SIGNAL('backing_on'),'')
 		
-	def Backing_check(self):
+	def Backing_status(self):
 		printInfo('Checking backing pump status...')
 		return self.write_msg(self.backing_check)
 
@@ -745,7 +863,8 @@ class TIC(QtCore.QObject):
 			self.write_msg(self.turbo_on)
 			
 		else:
-			printWarning('Pressure too high to turn on turbo pump, wait until pressure is < 5 mTorr')
+			printWarning('Pressure too high to turn on turbo pump, ' \ 
+				     'wait until pressure is < 5 mTorr')
 			self.emit(QtCore.SIGNAL('turbo_off'),'')
 
 	def Turbo_off(self):
@@ -755,128 +874,101 @@ class TIC(QtCore.QObject):
 			self.write_msg(self.turbo_off)
 			
 		else:
-			printWarning('Pressure too low to turn off turbo pump, wait until pressure is > 1e-6 Torr')
+			printWarning('Pressure too low to turn off turbo pump, ' \ 
+				     'wait until pressure is > 1e-6 Torr')
 			self.emit(QtCore.SIGNAL('turbo_on'),'')
 
-	def Turbo_check(self):
+	def Turbo_status(self):
 		printInfo('Checking turbo pump status...')
 		return self.write_msg(self.turbo_check)
 
-	# graphing code
+	# Read the WR gauge.
 	def Gauge_read(self):
 		printInfo('Checking pressure...')
 		timestamp = mdates.date2num(datetime.datetime.now())
 		try:
 			pressure_check = self.write_msg(self.gauge_read)
-			convert2torr = float(pressure_check) * 760 / 101325
-			convert2scientific = "{:.2e}".format(convert2torr)
-			printInfo('Gauge reads: ' + convert2scientific + ' Torr')
-			self.emit(QtCore.SIGNAL('pressure'),convert2scientific)
-			return convert2torr, timestamp;
+			#
+			# **For some reason, the pressure read here is two orders
+			# of magnitude greater than what the pressure reads
+			# at the controller. **
+			#
+			pressure_check = float(pressure_check) * 10 ** -2 
+			printInfo('Gauge read: %s mbar' %pressure_check)
+			return pressure_check, timestamp
 		except:
-			printError('No response was received from the TIC Controller')
+			printError('No response was received from the TIC Controller.')
 			pressure_check = ''
-			return pressure_check, timestamp;
+			return pressure_check, timestamp)
 
-	# save gauge data
-	def Collect_data(self):
-		pressure, timestamp = self.Gauge_read()
-		ion_pressure = self.Ion_gauge()
-		self.graph_window.pressure = np.append(self.graph_window.pressure, pressure)
-		self.graph_window.date = np.append(self.graph_window.date, timestamp)
-		self.graph_window.ion_pressure = np.append(self.graph_window.ion_pressure, ion_pressure)
-
-	def Stop_plotting(self):
-		self.plotting = False
-		printInfo('Stopping plot...')
-
-	# create pressure data log
-	def Create_dat(self):
-		filename = datetime.datetime.now().strftime("%Y.%m.%d")
-		i = ''
-		while True:
-			if os.path.isfile(filename + i + '.dat'):
-				if i:
-					i = '('+str(int(i[1:-1])+1)+')' # Append 1 to number in brackets
-				else:
-					i = '(1)'
-			else:
-				break
-
-		filename = filename + "%s.dat" % i
-		with open(filename, "w") as tempLog:
-			tempLog.seek(0,0)
-			tempLog.write('Float date' + ',' + 'Pressure (Torr)' + ',' + 'Date' '\n')
-		return filename
-
-	# update pressure data log
-	def Update_dat(self, filename, timestamp, pressure):
-		with open(filename,'a') as tempLog:
-			tempLog.write(str(timestamp) + ',' + str(pressure) + ',' + str(mdates.num2date(timestamp)) + '\n')
-
-### need to fix automated procedures once getter is installed and ion pump is tested###
-	# automated pump procedure
+	# Automated pump procedure.
 	def Pump_down(self):
-		print("Pump_down")
+		print('Pump_down')
 		self.Backing_on()
-		self.Gauge_read()
-		self.autoPlotThread()
-		while self.graph_window.pressure[-1] > .001:
-			print 'sleeping back'
+		while self.pressure_reading > 0.001:  # ***NEED TO CHANGE TO MBAR**
+			print('sleeping back.')
 			time.sleep(10)
 		self.Turbo_on()
-		#ion stuff		
-		#while self.graph_window.pressure[-1] > neg pressure:
-		#	print 'sleeping turbo'
+		#
+		# Uncomment the following to pump down automatically
+		# with the ion pump. "neg pressure" and "ion pressure"
+		# are stand ins and will need to be replaced by actual
+		# pressure values in mbar.
+		#		
+		#while self.pressure_reading > neg pressure:
+		#	print('sleeping turbo.')
 		#	time.sleep(10)
 		#self.Neg_on()
-		#time.sleep(hour)
+		#time.sleep(hour)  # define hour!
 		#self.Neg_off()
-		#while self.graph_window.pressure[-1] > ion pressure:
-		#	print 'sleeping ion'
+		#while self.pressure_reading > ion pressure:
+		#	print('sleeping ion.')
 		#	time.sleep(10)
 		#self.Ion_on()
 
-	# automated vent procedure
-	def Vent(self):
-		#ion stuff		
+	# Automated vent procedure. 
+	def Vent(self):		
 		self.Turbo_off()
-		self.Gauge_read()
-		self.autoPlotThread()
-		while self.graph_window.pressure[-1] < .08:
-			print 'sleeping back'
+		while self.pressure_reading < 0.08:
+			print('sleeping back.')
 			time.sleep(10)
 		self.Backing_off()
 
-	# general NEXTorr write message and read response
+	# General NEXTorr write message and read response.
 	@QtCore.pyqtSlot()
 	def write_ion(self, message):
-		self.emit(QtCore.SIGNAL('block_print'),'')
-		time.sleep(.2)
+		self.emit(QtCore.SIGNAL('block_print'), '')
+		time.sleep(0.2)
 		self.sioIon.write(unicode(message))
 		self.sioIon.flush()
-		self.emit(QtCore.SIGNAL('enable_print'),'')
+		self.emit(QtCore.SIGNAL('enable_print'), '')
 	
-		# print response
+		# Print response.
 		raw_message = self.sioIon.readline()
 		printDebug(raw_message)
 		return raw_message
 
-	# pump on/off commands:
-	### again, checks in place to make sure pressures are within the desired range before turning off or on each pump. This will have to be changed once the actuator value is active. Add secondary conditions that check if the valve is open/closed ###
+	#
+	# Pump on/off commands:
+	# Again, checks in place to make sure pressures are within the 
+	# desired range before turning off or on each pump. This will 
+	# have to be changed once the actuator value is active. Add 
+	# secondary conditions that check if the valve is open/closed.
+	#
 	@QtCore.pyqtSlot()
 	def Ion_on(self):
 		if self.pressure_reading < 1e-5:
 			printInfo('Turning ion pump on...')
-			self.emit(QtCore.SIGNAL('ion_on'),'')
+			self.emit(QtCore.SIGNAL('ion_on'), '')
 			check = self.write_ion(self.IP_ON)
 			if '$' in check:
-				printInfo('Ion pump command successful')
+				printInfo('Ion pump command successful.')
 			else:
-				printError('Ion pump command error')
+				printError('Ion pump command error.')
 		else:
-			printWarning('Pressure too high to turn on ion pump, wait until pressure is < 1e-5 Torr.')
-			self.emit(QtCore.SIGNAL('ion_off'),'')
+			printWarning('Pressure too high to turn on ion pump, ' \ 
+				     'wait until pressure is < 1e-5 Torr.')
+			self.emit(QtCore.SIGNAL('ion_off'), '')
 
 	@QtCore.pyqtSlot()	
 	def Ion_off(self):
@@ -884,23 +976,24 @@ class TIC(QtCore.QObject):
 		self.emit(QtCore.SIGNAL('ion_off'),'')
 		check = self.write_ion(self.IP_OFF)
 		if '$' in check:
-			printInfo('Ion pump command successful')
+			printInfo('Ion pump command successful.')
 		else:
-			printError('Ion pump command error')
+			printError('Ion pump command error.')
 
 	@QtCore.pyqtSlot()
 	def Neg_on(self):
 		if self.pressure_reading < 1e-4:
 			print 'Turning NEG pump on...'
-			self.emit(QtCore.SIGNAL('neg_on'),'')
+			self.emit(QtCore.SIGNAL('neg_on'), '')
 			check = self.write_ion(self.NP_ON)
 			if '$' in check:
-				printInfo('NEG pump command successful')
+				printInfo('NEG pump command successful.')
 			else:
-				printError('NEG pump command error')
+				printError('NEG pump command error.')
 		else:
-			printWarning('Pressure too high to turn on NEG pump, wait until pressure is < 1e-4 Torr.')
-			self.emit(QtCore.SIGNAL('neg_off'),'')
+			printWarning('Pressure too high to turn on NEG pump, ' \ 
+				     'wait until pressure is < 1e-4 Torr.')
+			self.emit(QtCore.SIGNAL('neg_off'), '')
 
 	@QtCore.pyqtSlot()	
 	def Neg_off(self):
@@ -909,13 +1002,13 @@ class TIC(QtCore.QObject):
 		check = self.write_ion(self.NP_OFF)
 		print check
 		if '$' in check:
-			printInfo('NEG pump command successful')
+			printInfo('NEG pump command successful.')
 		else:
-			printError('NEG pump command error')
+			printError('NEG pump command error.')
 
-	# status checks and pressure updates
+	# Status checks and pressure updates.
 	@QtCore.pyqtSlot()
-	def Status_check(self):
+	def Ion_status(self):
 		printInfo('Checking ion/NEG pump status...')
 		status = self.write_ion(self.STATUS)
 		ion_status = status.split(',')[0]
@@ -926,18 +1019,21 @@ class TIC(QtCore.QObject):
 		printInfo('Checking NEXTorr gauge...')
 		try:
 			status = self.write_ion(self.PRESSURE)
-			ion_reading = float(status.rstrip())
-			printInfo('Ion gauge reads: ' + str(ion_reading) + ' Torr')
-			self.emit(QtCore.SIGNAL('ion_pressure'),ion_reading)
+			ion_reading = float(status.rstrip())  # Torr?
+			#printInfo('Ion gauge reads: ' + str(ion_reading) + ' Torr')
+			ion_reading = ion_reading * 1.333  # mbar
+			printInfo('Ion gauge reads: %s mbar' %ion_reading)
 			return ion_reading
 		except:
-			printError('No response was received from the NEXTorr Power Supply')
+			printError('No response was received from the NEXTorr ' \
+				   'Power Supply.')
 			ion_reading = ''
 			return ion_reading
 
-#Start/Run GUI window
+#Start/Run GUI window.
 if __name__=='__main__':
 	app=QtGui.QApplication(sys.argv)
 	GUI=MainUiClass()
 	GUI.show()
 	sys.exit(app.exec_())
+
