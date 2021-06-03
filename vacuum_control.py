@@ -246,34 +246,34 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		# Set up pump switches.
 		self.ion_switch.setCheckable(True)
 		self.ion_switch.setStyleSheet(
-				'QPushButton#ion_switch {background-color : ' \ 
-				'#e57373; border-style: inset; border-width: ' \ 
+				'QPushButton#ion_switch {background-color : ' \
+				'#e57373; border-style: inset; border-width: ' \
 				'2px; border-radius: 10px; padding: 6px;}' \
-				'QPushButton#ion_switch:checked ' \ 
+				'QPushButton#ion_switch:checked ' \
 				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.neg_switch.setCheckable(True)
 		self.neg_switch.setStyleSheet(
-				'QPushButton#neg_switch {background-color : ' \ 
-				'#e57373; border-style: inset; border-width: ' \ 
+				'QPushButton#neg_switch {background-color : ' \
+				'#e57373; border-style: inset; border-width: ' \
 				'2px; border-radius: 10px; padding: 6px;}' \
-				'QPushButton#neg_switch:checked ' \ 
+				'QPushButton#neg_switch:checked ' \
 				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.backing_switch.setCheckable(True)
 		self.backing_switch.setStyleSheet(
-				'QPushButton#neg_switch {background-color : ' \ 
-				'#e57373; border-style: inset; border-width: ' \ 
+				'QPushButton#backing_switch {background-color : ' \
+				'#e57373; border-style: inset; border-width: ' \
 				'2px; border-radius: 10px; padding: 6px;}' \
-				'QPushButton#neg_switch:checked ' \ 
+				'QPushButton#backing_switch:checked ' \
 				'{background-color: #8bc34a; border-style: outset;}')  
 
 		self.turbo_switch.setCheckable(True)		
 		self.turbo_switch.setStyleSheet(
-				'QPushButton#neg_switch {background-color : ' \ 
-				'#e57373; border-style: inset; border-width: ' \ 
+				'QPushButton#turbo_switch {background-color : ' \
+				'#e57373; border-style: inset; border-width: ' \
 				'2px; border-radius: 10px; padding: 6px;}' \
-				'QPushButton#neg_switch:checked ' \ 
+				'QPushButton#turbo_switch:checked ' \
 				'{background-color: #8bc34a; border-style: outset;}')  
 
 		# Setup functionality to buttons and options.
@@ -304,7 +304,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.connect(self.tic, QtCore.SIGNAL('enable_print'), self.enablePrint)
 		self.connect(self, QtCore.SIGNAL('create_new_window'), \
 							self.create_new_window)
-		self.connect(self, QtCore.SIGNAL('update_window'), \ 	
+		self.connect(self, QtCore.SIGNAL('update_window'), \
 							self.graph_window.UpdatePlot)
 		self.connect(self.tic, QtCore.SIGNAL('backing_on'), self.setBackingTextOn)
 		self.connect(self.tic, QtCore.SIGNAL('backing_off'), self.setBackingTextOff)
@@ -475,8 +475,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			printInfo('Ion pump is on.')
 			self.setIonTextOn()
 			# Check if pressure is low enough for ion pump to be on.
-			if self.tic.pressure_reading > 1e-5:
-				printWarning('Pressure is too high (> 1e-5 Torr) ' \ 
+			if self.tic.pressure_reading > 1e-5 * 1.333:
+				printWarning('Pressure is too high (> 1.3e-5 mbar) ' \
 					     'for ion pump to function')
 				# Turn off pump if pressure too high.
 				self.q.put(self.tic.Ion_off)
@@ -490,8 +490,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			printInfo('NEG pump is on.')
 			self.setNegTextOn()
 			# Checks if pressure is low enough for neg pump to be on.
-			if self.tic.pressure_reading > 1e-4:
-				printWarning('Pressure is too high (> 1e-4 Torr) ' \ 
+			if self.tic.pressure_reading > 1e-4 * 1.333:
+				printWarning('Pressure is too high (> 1.3e-4 mbar) ' \
 					     'for NEG pump to function')
 				self.q.put(self.tic.Neg_off)
 		elif any('NP OFF' in s for s in neg_status):
@@ -540,8 +540,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	def ventDialog(self):
 		msg = QtGui.QMessageBox(self.centralwidget)
 		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText('Are you sure you want to vent the system? ' \ 
-			    'This will take approximately 4 hours. There is ' \ 
+		msg.setText('Are you sure you want to vent the system? ' \
+			    'This will take approximately 4 hours. There is ' \
 			    'no way to abort a vent procedure.')
 		msg.setWindowTitle('Vent Warning')
 		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
@@ -558,8 +558,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	def pumpDownDialog(self):
 		msg = QtGui.QMessageBox(self.centralwidget)
 		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText('Are you sure you want to pump down the system? ' \ 
-			    'This will take approximately 36 hours. You can ' \ 
+		msg.setText('Are you sure you want to pump down the system? ' \
+			    'This will take approximately 36 hours. You can ' \
 			    'abort a pump down procedure if needed.')
 		msg.setWindowTitle('Pump Down Warning')
 		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
@@ -843,7 +843,7 @@ class TIC(QtCore.QObject):
 		self.write_msg(self.backing_on)
 
 	def Backing_off(self):
-		if self.pressure_reading > 6:
+		if self.pressure_reading > 6 * 1.333:
 			printInfo('Turning backing pump off...')
 			self.emit(QtCore.SIGNAL('backing_off'),'')
 			self.write_msg(self.backing_off)
@@ -857,25 +857,25 @@ class TIC(QtCore.QObject):
 		return self.write_msg(self.backing_check)
 
 	def Turbo_on(self):
-		if self.pressure_reading < .005:
+		if self.pressure_reading < .005 * 1.333:
 			printInfo('Turning turbo pump on...')
 			self.emit(QtCore.SIGNAL('turbo_on'),'')
 			self.write_msg(self.turbo_on)
 			
 		else:
-			printWarning('Pressure too high to turn on turbo pump, ' \ 
-				     'wait until pressure is < 5 mTorr')
+			printWarning('Pressure too high to turn on turbo pump, ' \
+				     'wait until pressure is < 0.0067 mbar')
 			self.emit(QtCore.SIGNAL('turbo_off'),'')
 
 	def Turbo_off(self):
-		if self.pressure_reading > 1e-6:
+		if self.pressure_reading > 1e-6 * 1.333:
 			printInfo('Turning turbo pump off...')
 			self.emit(QtCore.SIGNAL('turbo_off'),'')
 			self.write_msg(self.turbo_off)
 			
 		else:
-			printWarning('Pressure too low to turn off turbo pump, ' \ 
-				     'wait until pressure is > 1e-6 Torr')
+			printWarning('Pressure too low to turn off turbo pump, ' \
+				     'wait until pressure is > 1.3e-6 mbar')
 			self.emit(QtCore.SIGNAL('turbo_on'),'')
 
 	def Turbo_status(self):
@@ -899,7 +899,7 @@ class TIC(QtCore.QObject):
 		except:
 			printError('No response was received from the TIC Controller.')
 			pressure_check = ''
-			return pressure_check, timestamp)
+			return pressure_check, timestamp
 
 	# Automated pump procedure.
 	def Pump_down(self):
@@ -926,10 +926,10 @@ class TIC(QtCore.QObject):
 		#	time.sleep(10)
 		#self.Ion_on()
 
-	# Automated vent procedure. 
+	# Automated vent procedure.
 	def Vent(self):		
 		self.Turbo_off()
-		while self.pressure_reading < 0.08:
+		while self.pressure_reading < 0.08 * 1.33:
 			print('sleeping back.')
 			time.sleep(10)
 		self.Backing_off()
@@ -966,7 +966,7 @@ class TIC(QtCore.QObject):
 			else:
 				printError('Ion pump command error.')
 		else:
-			printWarning('Pressure too high to turn on ion pump, ' \ 
+			printWarning('Pressure too high to turn on ion pump, ' \
 				     'wait until pressure is < 1e-5 Torr.')
 			self.emit(QtCore.SIGNAL('ion_off'), '')
 
@@ -991,7 +991,7 @@ class TIC(QtCore.QObject):
 			else:
 				printError('NEG pump command error.')
 		else:
-			printWarning('Pressure too high to turn on NEG pump, ' \ 
+			printWarning('Pressure too high to turn on NEG pump, ' \
 				     'wait until pressure is < 1e-4 Torr.')
 			self.emit(QtCore.SIGNAL('neg_off'), '')
 
