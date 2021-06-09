@@ -310,6 +310,16 @@
       </property>
      </widget>
     </item>
+    <item row="4" column="4">
+     <widget class="QPushButton" name="seal_button">
+      <property name="text">
+       <string>Seal Chamber</string>
+      </property>
+      <property name="checkable">
+       <bool>false</bool>
+      </property>
+     </widget>
+    </item>
    </layout>
   </widget>
   <widget class="QMenuBar" name="menubar">
