@@ -6,11 +6,20 @@ from matplotlib.ticker import AutoMinorLocator
 from matplotlib.backends.backend_qt4agg import NavigationToolbar2QT
 from matplotlib.backends.backend_qt4agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+import matplotlib.ticker as mtick
 import numpy as np
 
 # GUI imports.
 from PyQt4 import QtGui,QtCore
 import adminGUI
+
+#import modules to run the gate valve
+from v_valve_module import V_Valve
+import RPi.GPIO as GPIO
+
+#Import module for LN2 Valve
+from ln2_valve_module import LN2_Valve,LN2_ValveGUI
+
 	
 # Set up logging. Change level=logging.INFO to level=logging.DEBUG to show raw 
 # serial communication.
@@ -72,8 +81,8 @@ class EmittingStream(QtCore.QObject):
 class SecondUiClass(QtGui.QMainWindow):	
 	Log_pressure = False
 	Import = False
-	filename = None
-	import_filename = None
+	filepath = None
+	import_filepath = None
 
 	def __init__(self, parent=None):
 		super(SecondUiClass, self).__init__(parent)
@@ -107,28 +116,40 @@ class SecondUiClass(QtGui.QMainWindow):
 		# Set up the graph.
 		self.ax = self.figure.add_subplot(111)	
 		self.ax.hold(False)
+
+		#printInfo("self.filepath: %s" %self.filepath)
+		#printInfo("self.import_filepath: %s" %self.import_filepath)
 		
 		# Check if importing or using live data.
 		self.importing = importing
 		if self.importing == False:
-			open_file = self.filename
+			open_file = self.filepath
 		else:
-			open_file = self.import_filename
-			if self.import_filename == None:
+			open_file = self.import_filepath
+			if self.import_filepath == None:
 				printInfo("Please import a pressure log file.")
 
 		# Graph pressure vs. time. 
-		date, pressure = np.loadtxt(open_file, unpack=True, skiprows=1)
+		try:
+			date, pressure = np.loadtxt(open_file, unpack=True, skiprows=1)
+		except ValueError:
+			printInfo("Error: Need more values to graph.")
+			return
 		self.ax.plot(date, pressure, 'r-')
+		filename = open_file.split('/')[-1]
 		
 		# Format axes.
-		self.ax.set_title("Graphing: %s" %open_file)
+		self.ax.set_title("Graphing: %s" %filename)
 		self.ax.set_xlabel('Time (h:m:s)')
 		self.ax.set_ylabel('Pressure (mbar)')
 		myFmt = mdates.DateFormatter('%H:%M:%S')
 		self.ax.xaxis.set_major_formatter(myFmt)
 		self.ax.xaxis.set_minor_locator(AutoMinorLocator())
 		self.ax.yaxis.set_minor_locator(AutoMinorLocator())
+		y_formatter = mtick.ScalarFormatter(useOffset=True)
+		self.ax.yaxis.set_major_formatter(y_formatter)
+		self.ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.3e'))
+		self.ax.grid()
 
 		# Display the graph.
 		self.canvas.draw()
@@ -152,7 +173,7 @@ class SecondUiClass(QtGui.QMainWindow):
 
 	# Update the graph. Used for autoplotting.
 	def UpdatePlot(self):
-		date, pressure = np.loadtxt(self.filename, unpack=True, skiprows=1)
+		date, pressure = np.loadtxt(self.filepath, unpack=True, skiprows=1)
 
 		if self.Log_pressure == True:
 			pressure = np.log10(pressure)
@@ -161,13 +182,19 @@ class SecondUiClass(QtGui.QMainWindow):
 			self.ax.set_ylabel('Pressure (mbar)')
 
 		self.ax.plot(date, pressure, 'r-')
+		filename = self.filepath.split('/')[-1]
 
-		self.ax.set_title("Graphing: %s" %self.filename)
+		self.ax.set_title("Graphing: %s" %filename)
 		self.ax.set_xlabel('Time (h:m:s)')
 		myFmt = mdates.DateFormatter('%I:%M:%S')
 		self.ax.xaxis.set_major_formatter(myFmt)
 		self.ax.xaxis.set_minor_locator(AutoMinorLocator())
+
 		self.ax.yaxis.set_minor_locator(AutoMinorLocator())
+		y_formatter = mtick.ScalarFormatter(useOffset=True)
+		self.ax.yaxis.set_major_formatter(y_formatter)
+		self.ax.yaxis.set_major_formatter(mtick.FormatStrFormatter('%.3e'))
+		self.ax.grid()
 		self.ax.relim()
 		self.ax.autoscale_view()
 		self.toolbar.update()
@@ -210,7 +237,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		# Comment out to send errors to terminal for troublshooting.
 		#sys.stderr = EmittingStream(textWritten=self.normalOutputWritten)
 
-		printInfo("Window opened.")
+		printInfo("...\n...\n...\nWindow opened.")
 
 		# Start threads and connect buttons.
 		self.createTICThread()
@@ -228,6 +255,10 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.Turbo_check()
 
 		self.cycleThread()
+
+		# Instantiate the V_Valve object to control the gate valve
+		self.vac_valve = V_Valve(27,5,6)
+		
 		
 	# Functionality to disable printing.
 	def blockPrint(self):
@@ -287,6 +318,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.actionImport.triggered.connect(self.importFile)
 		self.pump_down.clicked.connect(self.pumpDownDialog)
 		self.vent.clicked.connect(self.ventDialog)
+		self.seal_button.clicked.connect(self.GateValve)
 
 	# Setup the TIC worker object and the tic_thread.
 	def createTICThread(self):
@@ -540,19 +572,27 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	def ventDialog(self):
 		msg = QtGui.QMessageBox(self.centralwidget)
 		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText('Are you sure you want to vent the system? ' \
+		ion_status, neg_status = self.tic.Ion_status()
+		if ion_status == 'IP OFF' and any('NP OFF' in s for s in neg_status):
+			msg.setText('Are you sure you want to vent the system? ' \
 			    'This will take approximately 4 hours. There is ' \
 			    'no way to abort a vent procedure.')
-		msg.setWindowTitle('Vent Warning')
-		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-		msg.setDefaultButton(QtGui.QMessageBox.Cancel)
-		ret = msg.exec_();
+			msg.setWindowTitle('Vent Warning')
+			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+			msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+			ret = msg.exec_();
 
-		if ret == QtGui.QMessageBox.Ok:
-			printInfo('Starting vent procedure...')			
-			self.ventThread
-		elif ret == QtGui.QMessageBox.Cancel:
-			printInfo('Vent procedure canceled...')
+			if ret == QtGui.QMessageBox.Ok:
+				printInfo('Starting vent procedure...')			
+				self.ventThread()
+			elif ret == QtGui.QMessageBox.Cancel:
+				printInfo('Vent procedure canceled...')
+		
+		else:
+			msg.setText('Turn off NEG and Ion Pumps before vent down')
+			msg.setWindowTitle('Vent Warning')
+			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+
 
 	# Pump down warning message.
 	def pumpDownDialog(self):
@@ -576,47 +616,70 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	def importFile(self):
 		printInfo('Select a .dat file to import a pressure log...')
 		dialog = QtGui.QFileDialog		
-		filepath = dialog.getOpenFileName(
+		self.import_filepath = dialog.getOpenFileName(
 				self, 'Select dat file', '.', 'DAT files(*.dat)')
-		self.import_filename = str(filepath.split('/')[-1])
+		import_filename = str(self.import_filepath.split('/')[-1])
+
+		# Need to have path to file in reference to the current directory.
+		self.import_filepath = './pressure_logs/' + import_filename
 
 		self.importing = True
-		self.graph_window.import_filename = self.import_filename
-		print("Importing pressure log file: %s." %self.import_filename)
+		self.graph_window.import_filepath = self.import_filepath
+		print("Importing pressure log file: %s." %import_filename)
 	
 	# Create pressure data log.
 	def Create_dat(self):
-		filename = './pressure_logs/pressureLog_' + \
+		filepath = './pressure_logs/pressureLog_' + \
 				datetime.datetime.now().strftime('%Y%m%d')
 		i = 1
 		while True:
-			if os.path.isfile("%s-%s.dat" %(filename, i)):
+			if os.path.isfile("%s-%s.dat" %(filepath, i)):
 				i += 1
 			else:
 				break
 
-		self.filename = filename + '-%s.dat' % i
-		self.graph_window.filename = self.filename
+		self.filepath = filepath + '-%s.dat' % i
+		self.graph_window.filepath = self.filepath
+		self.filename = filepath.split('/')[-1]
 
-		with open(self.filename, 'w') as pressureLog:
+		with open(self.filepath, 'w') as pressureLog:
 			pressureLog.seek(0,0)
-			pressureLog.write('Float date	Pressure (Torr)\n')
+			pressureLog.write('Float date	Pressure (mbar)\n')
 		print("Pressure log file created: %s" %self.filename)
 
 	# Read and save gauge data.
 	def Collect_data(self):
-		self.pressure_reading, timestamp = self.tic.Gauge_read()
-		self.ion_pressure_reading = self.tic.Ion_gauge()
+		self.tic.pressure_reading, timestamp = self.tic.Gauge_read()
+		self.tic.ion_pressure_reading = self.tic.Ion_gauge()
 
-		with open(self.filename, 'a') as pressureLog:
-			pressureLog.write('%.6f	%.6e\n' %(timestamp, self.pressure_reading))
+		if None in [self.tic.pressure_reading, timestamp]:
+			printInfo("No pressure measurements recorded.")
+			return
 
-		self.tic_pressureText.setText(str(self.pressure_reading) + ' mbar')
+		with open(self.filepath, 'a') as pressureLog:
+			pressureLog.write('%.6f	%.6e\n' %(timestamp, self.tic.pressure_reading))
+
+		self.tic_pressureText.setText(str(self.tic.pressure_reading) + ' mbar')
 
 		if self.tic.ion_pressure_reading == 0:
 			self.ion_pressureText.setText('Ion Gauge Off')
 		else:
-			self.ion_pressureText.setText(str(self.ion_pressure_reading) + ' mbar')
+			self.ion_pressureText.setText(str(self.tic.ion_pressure_reading) + ' mbar')
+
+	# Operation of the GateValve
+	def GateValve(self):
+		self.vac_valve.Push()
+		vvStat = self.vac_valve.Status()
+		if vvStat == 1:
+			printInfo('V_Valve Error: Both swithces read False')
+		elif vvStat == 2:
+			printInfo('V_Valve Error: Both switches read True')
+		elif vvStat == 3:
+			printInfo('Vacuum Valve is open')
+		elif vvStat == 4:
+			printInfo('Vavuum Valve is closed')
+		else:
+			printInfo('Did not read inputs')
 
 	# Functionality to restore sys.stdout and sys.stderr.
 	def __del__(self):
@@ -646,6 +709,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		#else:
 		#	event.ignore()
 		printInfo("Window closed.")
+		GPIO.cleanup()
 
 #--------------------------------------------------------------------
 # SERIAL CLASSES
@@ -868,6 +932,7 @@ class TIC(QtCore.QObject):
 			self.emit(QtCore.SIGNAL('turbo_off'),'')
 
 	def Turbo_off(self):
+		print self.pressure_reading
 		if self.pressure_reading > 1e-6 * 1.333:
 			printInfo('Turning turbo pump off...')
 			self.emit(QtCore.SIGNAL('turbo_off'),'')
@@ -905,7 +970,7 @@ class TIC(QtCore.QObject):
 	def Pump_down(self):
 		print('Pump_down')
 		self.Backing_on()
-		while self.pressure_reading > 0.001:  # ***NEED TO CHANGE TO MBAR**
+		while self.pressure_reading > 0.00133:  # ***NEED TO CHANGE TO MBAR**
 			print('sleeping back.')
 			time.sleep(10)
 		self.Turbo_on()
@@ -927,9 +992,10 @@ class TIC(QtCore.QObject):
 		#self.Ion_on()
 
 	# Automated vent procedure.
+	# To Do: Fix this to issue tic command to open solenoid to vent.
 	def Vent(self):		
 		self.Turbo_off()
-		while self.pressure_reading < 0.08 * 1.33:
+		while self.pressure_reading < 6 * 1.33:
 			print('sleeping back.')
 			time.sleep(10)
 		self.Backing_off()
@@ -957,7 +1023,7 @@ class TIC(QtCore.QObject):
 	#
 	@QtCore.pyqtSlot()
 	def Ion_on(self):
-		if self.pressure_reading < 1e-5:
+		if self.pressure_reading < 1e-5 * 1.333:
 			printInfo('Turning ion pump on...')
 			self.emit(QtCore.SIGNAL('ion_on'), '')
 			check = self.write_ion(self.IP_ON)
@@ -967,7 +1033,7 @@ class TIC(QtCore.QObject):
 				printError('Ion pump command error.')
 		else:
 			printWarning('Pressure too high to turn on ion pump, ' \
-				     'wait until pressure is < 1e-5 Torr.')
+				     'wait until pressure is < 1.3e-5 mbar.')
 			self.emit(QtCore.SIGNAL('ion_off'), '')
 
 	@QtCore.pyqtSlot()	
@@ -982,7 +1048,7 @@ class TIC(QtCore.QObject):
 
 	@QtCore.pyqtSlot()
 	def Neg_on(self):
-		if self.pressure_reading < 1e-4:
+		if self.pressure_reading < 1e-4 * 1.333:
 			print 'Turning NEG pump on...'
 			self.emit(QtCore.SIGNAL('neg_on'), '')
 			check = self.write_ion(self.NP_ON)
@@ -992,7 +1058,7 @@ class TIC(QtCore.QObject):
 				printError('NEG pump command error.')
 		else:
 			printWarning('Pressure too high to turn on NEG pump, ' \
-				     'wait until pressure is < 1e-4 Torr.')
+				     'wait until pressure is < 1.3e-4 mbar.')
 			self.emit(QtCore.SIGNAL('neg_off'), '')
 
 	@QtCore.pyqtSlot()	
@@ -1035,5 +1101,6 @@ if __name__=='__main__':
 	app=QtGui.QApplication(sys.argv)
 	GUI=MainUiClass()
 	GUI.show()
+	ex=LN2_ValveGUI()
 	sys.exit(app.exec_())
 
