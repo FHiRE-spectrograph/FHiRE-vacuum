@@ -13,7 +13,7 @@ import numpy as np
 from PyQt4 import QtGui,QtCore
 import adminGUI
 
-#import modules to run the gate valve
+#import modules to run the gate valve.
 from v_valve_module import V_Valve
 import RPi.GPIO as GPIO
 
