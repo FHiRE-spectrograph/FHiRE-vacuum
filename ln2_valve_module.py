@@ -7,6 +7,8 @@ import sys
 #class for valve controlling
 class LN2_Valve:
 	def __init__(self,PinValve):
+		GPIO.setwarnings(False)
+		
 		self.__pin = PinValve
 		self.LN2ValveStatus = False #valve closed, no power through relay
 		
