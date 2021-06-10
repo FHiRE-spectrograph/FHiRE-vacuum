@@ -941,7 +941,7 @@ class TIC(QtCore.QObject):
 		self.write_msg(self.backing_on)
 
 	def Backing_off(self):
-		if self.pressure_reading > 6 * 1.333:
+		if self.pressure_reading > 6 * 1.333 or GUI.vac_valve.Status() == 4:
 			printInfo('Turning backing pump off...')
 			self.emit(QtCore.SIGNAL('backing_off'),'')
 			self.write_msg(self.backing_off)
@@ -955,7 +955,7 @@ class TIC(QtCore.QObject):
 		return self.write_msg(self.backing_check)
 
 	def Turbo_on(self):
-		if self.pressure_reading < .005 * 1.333:
+		if self.pressure_reading < .005 * 1.333 or GUI.vac_valve.Status() == 4:
 			printInfo('Turning turbo pump on...')
 			self.emit(QtCore.SIGNAL('turbo_on'),'')
 			self.write_msg(self.turbo_on)
