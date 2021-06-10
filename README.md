@@ -43,8 +43,6 @@ Old:
 
 ## To do:
 
-[]Add linear actuator valve control (or might be separate PDU?)  
-[]Add LN2 valve control (most likely separate PDU)  
 []Modify pump conditions so pumps can be turned off if valve closed  
 []Automate pump down and vent procedures  
 []Make two GUIs for admin and user  
