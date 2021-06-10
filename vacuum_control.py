@@ -258,6 +258,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 
 		# Instantiate the V_Valve object to control the gate valve
 		self.vac_valve = V_Valve(27,5,6)
+		self.GateValveCheck()
 		
 		
 	# Functionality to disable printing.
@@ -320,6 +321,24 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		self.vent.clicked.connect(self.ventDialog)
 		self.seal_button.clicked.connect(self.GateValve)
 
+		#Setup connections to change style sheet for gate valve
+		self.connect(self, QtCore.SIGNAL('#e3c652'), \
+							self.GateValveStyleA)
+		self.connect(self, QtCore.SIGNAL('#8bc34a'), \
+							self.GateValveStyleB)
+		self.connect(self, QtCore.SIGNAL('#e57373'), \
+							self.GateValveStyleC)
+
+	def GateValveStyleA(self):
+		self.seal_button.setStyleSheet('QPushButton#seal_button {background-color : ' \
+			'#e3c652;}')
+	def GateValveStyleB(self):
+		self.seal_button.setStyleSheet('QPushButton#seal_button {background-color : ' \
+			'#8bc34a;}')
+	def GateValveStyleC(self):
+		self.seal_button.setStyleSheet('QPushButton#seal_button {background-color : ' \
+			'#e57373;}')
+	
 	# Setup the TIC worker object and the tic_thread.
 	def createTICThread(self):
 		self.tic = TIC()
@@ -338,6 +357,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 							self.create_new_window)
 		self.connect(self, QtCore.SIGNAL('update_window'), \
 							self.graph_window.UpdatePlot)
+		#self.connect(
 		self.connect(self.tic, QtCore.SIGNAL('backing_on'), self.setBackingTextOn)
 		self.connect(self.tic, QtCore.SIGNAL('backing_off'), self.setBackingTextOff)
 		self.connect(self.tic, QtCore.SIGNAL('turbo_on'), self.setTurboTextOn)
@@ -567,6 +587,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			self.q.put(self.Turbo_check)
 			time.sleep(10)
 			self.q.put(self.Ion_check)
+			time.sleep(5)
+			self.q.put(self.GateValveCheck)
 			
 	# Vent warning message.
 	def ventDialog(self):
@@ -585,6 +607,10 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			if ret == QtGui.QMessageBox.Ok:
 				printInfo('Starting vent procedure...')			
 				self.ventThread()
+				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+				'#f7d95e;}')
+				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+				'#ffffff;}')
 			elif ret == QtGui.QMessageBox.Cancel:
 				printInfo('Vent procedure canceled...')
 		
@@ -609,6 +635,8 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		if ret == QtGui.QMessageBox.Ok:
 			printInfo('Starting pump down procedure...')			
 			self.pumpDownThread()
+			self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+				'#f7d95e;}')
 		elif ret == QtGui.QMessageBox.Cancel:
 			printInfo('Pump down canceled...')
 
@@ -669,15 +697,21 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 	# Operation of the GateValve
 	def GateValve(self):
 		self.vac_valve.Push()
+		self.GateValveCheck()
+
+	def GateValveCheck(self):
 		vvStat = self.vac_valve.Status()
 		if vvStat == 1:
 			printInfo('V_Valve Error: Both swithces read False')
+			self.emit(QtCore.SIGNAL('#e3c652'))
 		elif vvStat == 2:
 			printInfo('V_Valve Error: Both switches read True')
 		elif vvStat == 3:
 			printInfo('Vacuum Valve is open')
+			self.emit(QtCore.SIGNAL('#8bc34a'))
 		elif vvStat == 4:
 			printInfo('Vavuum Valve is closed')
+			self.emit(QtCore.SIGNAL('#e57373'))
 		else:
 			printInfo('Did not read inputs')
 
