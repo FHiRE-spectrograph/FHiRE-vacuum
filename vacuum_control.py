@@ -259,7 +259,30 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		# Instantiate the V_Valve object to control the gate valve
 		self.vac_valve = V_Valve(27,5,6)
 		self.GateValveCheck()
+
+		#Load the status of the vacuum system
+		self.op_stat = np.loadtxt('pump_status.dat')
+		if self.op_stat == 0:
+			printInfo('Resume vent procedure...')			
+			self.ventThread()
+			self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+				'#f7d95e;}')
+			self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+				'#ffffff;}')
+		if self.op_stat == 1:
+			printInfo('Resume pump down procedure...')			
+			self.pumpDownThread()
+			self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+				'#f7d95e;}')
+			self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+				'#ffffff;}')
 		
+	#Function to update and save the pump_status.dat
+	def op_stat_save(self,status):
+		header = "Operating Status for vacuum system"
+		header += "0 is vent, 1 is pump down"
+		np.savetxt('pump_status.dat',status,header=header)
+			
 		
 	# Functionality to disable printing.
 	def blockPrint(self):
@@ -608,9 +631,10 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 				printInfo('Starting vent procedure...')			
 				self.ventThread()
 				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
-				'#f7d95e;}')
+					'#f7d95e;}')
 				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
-				'#ffffff;}')
+					'#ffffff;}')
+				self.op_stat_save(0)
 			elif ret == QtGui.QMessageBox.Cancel:
 				printInfo('Vent procedure canceled...')
 		
@@ -637,6 +661,9 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			self.pumpDownThread()
 			self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
 				'#f7d95e;}')
+			self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+				'#ffffff;}')
+			self.op_stat_save(1)
 		elif ret == QtGui.QMessageBox.Cancel:
 			printInfo('Pump down canceled...')
 
@@ -1004,7 +1031,7 @@ class TIC(QtCore.QObject):
 	def Pump_down(self):
 		print('Pump_down')
 		self.Backing_on()
-		while self.pressure_reading > 0.00133:  # ***NEED TO CHANGE TO MBAR**
+		while self.pressure_reading > 0.00133:
 			print('sleeping back.')
 			time.sleep(10)
 		self.Turbo_on()
@@ -1014,19 +1041,18 @@ class TIC(QtCore.QObject):
 		# are stand ins and will need to be replaced by actual
 		# pressure values in mbar.
 		#		
-		#while self.pressure_reading > neg pressure:
+		#while self.pressure_reading > 1.33e-5:
 		#	print('sleeping turbo.')
 		#	time.sleep(10)
 		#self.Neg_on()
-		#time.sleep(hour)  # define hour!
+		#time.sleep(1)  # define hour!
 		#self.Neg_off()
-		#while self.pressure_reading > ion pressure:
+		#while self.pressure_reading > 1.33e-5:
 		#	print('sleeping ion.')
 		#	time.sleep(10)
 		#self.Ion_on()
 
 	# Automated vent procedure.
-	# To Do: Fix this to issue tic command to open solenoid to vent.
 	def Vent(self):		
 		self.Turbo_off()
 		while self.pressure_reading < 6 * 1.33:
