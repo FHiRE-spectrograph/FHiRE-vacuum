@@ -30,6 +30,9 @@ __ln2_valve_module.py__:
 __v_valve_module.py__:  
 	Module that is imported to vacuum_control.py to control the vacuum gate valve  
 
+__pump_status.dat__:  
+	File that stores the operating status of the system to auto load the last process, either venting or pump down, at startup of the vacuum control  
+
 TIC.log:  
 	Log file made by vacuum_control.py. Logs button presses, information, warnings, and errors. If deleted a new log file will be made.  
 
