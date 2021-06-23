@@ -615,57 +615,72 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			
 	# Vent warning message.
 	def ventDialog(self):
-		msg = QtGui.QMessageBox(self.centralwidget)
-		msg.setIcon(QtGui.QMessageBox.Warning)
-		ion_status, neg_status = self.tic.Ion_status()
-		if ion_status == 'IP OFF' and any('NP OFF' in s for s in neg_status):
-			msg.setText('Are you sure you want to vent the system? ' \
-			    'This will take approximately 4 hours. There is ' \
-			    'no way to abort a vent procedure.')
-			msg.setWindowTitle('Vent Warning')
-			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-			msg.setDefaultButton(QtGui.QMessageBox.Cancel)
-			ret = msg.exec_();
-
-			if ret == QtGui.QMessageBox.Ok:
-				printInfo('Starting vent procedure...')			
-				self.ventThread()
-				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
-					'#f7d95e;}')
-				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
-					'#ffffff;}')
-				self.op_stat_save(0)
-			elif ret == QtGui.QMessageBox.Cancel:
-				printInfo('Vent procedure canceled...')
-		
+		vvStat = self.vac_valve.Status()
+		if vvStat == 3:
+			msg = QtGui.QMessageBox(self.centralwidget)
+			msg.setIcon(QtGui.QMessageBox.Warning)
+			ion_status, neg_status = self.tic.Ion_status()
+			if ion_status == 'IP OFF' and any('NP OFF' in s for s in neg_status):
+				msg.setText('Are you sure you want to vent the system? ' \
+				    'This will take approximately 4 hours. There is ' \
+				    'no way to abort a vent procedure.')
+				msg.setWindowTitle('Vent Warning')
+				msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+				msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+				ret = msg.exec_();
+	
+				if ret == QtGui.QMessageBox.Ok:
+					printInfo('Starting vent procedure...')			
+					self.ventThread()
+					self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+						'#f7d95e;}')
+					self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+						'#ffffff;}')
+					self.op_stat_save(0)
+				elif ret == QtGui.QMessageBox.Cancel:
+					printInfo('Vent procedure canceled...')
+			
+			else:
+				msg.setText('Turn off NEG and Ion Pumps before vent down')
+				msg.setWindowTitle('Vent Warning')
+				msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
 		else:
-			msg.setText('Turn off NEG and Ion Pumps before vent down')
+			msg = QtGui.QMessageBox(self.centralwidget)
+			msg.setIcon(QtGui.QMessageBox.Warning)
+			msg.setText('Open Gate Valve before venting')
 			msg.setWindowTitle('Vent Warning')
 			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-
 
 	# Pump down warning message.
 	def pumpDownDialog(self):
-		msg = QtGui.QMessageBox(self.centralwidget)
-		msg.setIcon(QtGui.QMessageBox.Warning)
-		msg.setText('Are you sure you want to pump down the system? ' \
-			    'This will take approximately 36 hours. You can ' \
-			    'abort a pump down procedure if needed.')
-		msg.setWindowTitle('Pump Down Warning')
-		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
-		msg.setDefaultButton(QtGui.QMessageBox.Cancel)
-		ret = msg.exec_();
-
-		if ret == QtGui.QMessageBox.Ok:
-			printInfo('Starting pump down procedure...')			
-			self.pumpDownThread()
-			self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
-				'#f7d95e;}')
-			self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
-				'#ffffff;}')
-			self.op_stat_save(1)
-		elif ret == QtGui.QMessageBox.Cancel:
-			printInfo('Pump down canceled...')
+		vvStat = self.vac_valve.Status()
+		if vvStat == 3:
+			msg = QtGui.QMessageBox(self.centralwidget)
+			msg.setIcon(QtGui.QMessageBox.Warning)
+			msg.setText('Are you sure you want to pump down the system? ' \
+				    'This will take approximately 36 hours. You can ' \
+				    'abort a pump down procedure if needed.')
+			msg.setWindowTitle('Pump Down Warning')
+			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+			msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+			ret = msg.exec_();
+	
+			if ret == QtGui.QMessageBox.Ok:
+				printInfo('Starting pump down procedure...')			
+				self.pumpDownThread()
+				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+					'#f7d95e;}')
+				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+					'#ffffff;}')
+				self.op_stat_save(1)
+			elif ret == QtGui.QMessageBox.Cancel:
+				printInfo('Pump down canceled...')
+		else:
+			msg = QtGui.QMessageBox(self.centralwidget)
+			msg.setIcon(QtGui.QMessageBox.Warning)
+			msg.setText('Open Gate Valve before pumping down')
+			msg.setWindowTitle('Vent Warning')
+			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
 
 	# Importing data from a .dat file.
 	def importFile(self):
@@ -723,8 +738,26 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 
 	# Operation of the GateValve
 	def GateValve(self):
-		self.vac_valve.Push()
+		self.vac_valve.Toggle()
+		print('Moving Valve')
+		time.sleep(5)
 		self.GateValveCheck()
+		#vvStat = self.vac_valve.Status()
+		#if vvStat == 3:
+		#	self.vac_valve.Toggle()
+		#	self.GateValveCheck()
+		#	while True:
+		#		vvStat = self.vac_valve.Status()
+		#		if vvStat == 4:
+		#			break
+		#	self.tic.Turbo_off()
+		#	self.tic.Backing_off()
+		#elif vvStat == 4:
+		#	self.tic.Turbo_on()
+		#	self.tic.Backing_on()
+		#	sleep(3600)
+		#	self.vac_valve.Toggle()
+		#	self.GateValveCheck()
 
 	def GateValveCheck(self):
 		vvStat = self.vac_valve.Status()
