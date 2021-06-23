@@ -17,23 +17,22 @@ class V_Valve:
 		#initialize gpio output and set to low for solenoid to be retracted
 		GPIO.setmode(GPIO.BCM)
         	GPIO.setup(self.__solenoid,GPIO.OUT)
-        	self.sol_pwm = GPIO.PWM(self.__solenoid,100)
-        	self.sol_pwm.start(0)
+        	GPIO.output(self.__solenoid,GPIO.LOW)
+		self.relay = 0 #Relay is off since output is low
 		
 		#initialize the gpio input from the micro switches
 		GPIO.setup(self.__open,GPIO.IN,pull_up_down = GPIO.PUD_UP) #other end connected to ground since pull up
 		GPIO.setup(self.__closed,GPIO.IN,pull_up_down = GPIO.PUD_UP) #other end connected to ground since pull up
 		
 	#Method to open the Vacuum Valve
-	def Push(self):
-		#set the solenoid pin to high to extend the solenoid
-		self.sol_pwm.ChangeDutyCycle(100)
-		#sleep for 1s to allow the button to be pushed (solenoid can not be energized for more than 2s)
-		sleep(1)
-		#Set the solenoid pin to low to retract the solenoid
-		self.sol_pwm.ChangeDutyCycle(0)
-		#sleep to wait for the valve to move
-		sleep(10)
+	def Toggle(self):
+		if self.relay == 0:
+			GPIO.output(self.__solenoid,GPIO.HIGH)
+			self.relay = 1
+		else:
+			GPIO.output(self.__solenoid,GPIO.LOW)
+			self.relay = 0
+		
 		
 	#method to get the status of the valve
 	def Status(self):
