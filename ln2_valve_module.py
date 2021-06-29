@@ -3,6 +3,9 @@
 import RPi.GPIO as GPIO
 from PyQt4 import QtGui,QtCore
 import sys
+import threading
+from pexpect import pxssh
+import time
 
 #class for valve controlling
 class LN2_Valve:
@@ -42,14 +45,28 @@ class LN2_ValveGUI(QtGui.QWidget):
 		super(LN2_ValveGUI,self).__init__()
 		self.initUI()
 		self.ln2v = LN2_Valve(17)
+		
+		#Temperature sensor
+		self.TempThread = QtCore.QThread()
+		self.Temp = Temperature()
+		self.Temp.moveToThread(self.TempThread)
+		self.TempThread.started.connect(self.Temp.run)
+		self.TempThread.start()	
+		
+		self.set_temperature = 20
+		#Create thread for overflow
+		self.of_event = threading.Event()
+		self.overflowThread = threading.Thread(target=self.OverflowThread)
+		self.overflowThread.setDaemon(True)
+		self.overflowThread.start()
 
 	def initUI(self):
 		self.col = QtGui.QColor(0,0,0)
 
-		valveb = QtGui.QPushButton("Valve",self)
-		valveb.setCheckable(True)
-		valveb.move(10,10)
-		valveb.clicked[bool].connect(self.BPress)
+		self.valveb = QtGui.QPushButton("Valve",self)
+		self.valveb.setCheckable(True)
+		self.valveb.move(10,10)
+		self.valveb.clicked[bool].connect(self.BPress)
 
 		self.square = QtGui.QFrame(self)
 		self.square.setGeometry(150,20,100,100)
@@ -62,39 +79,71 @@ class LN2_ValveGUI(QtGui.QWidget):
 	#Method to run when the button is pressed
 	def BPress(self,pressed):
 		if pressed:
+			msg = QtGui.QMessageBox.warning(QtGui.QWidget(),'LN2 Message','Please wait for tank to fill. Indicator will change color when complete')
 			val = 255
 			self.ln2v.Open() #Running the method to open the valve
 			Status = self.ln2v.Status #Get the status of the valve
 			print(Status) #print status to terminal
+			self.of_event.set()
 		else: 
 			val = 0
 			self.ln2v.Close() #method to close the valve
 			Status = self.ln2v.Status #get the status of the valve
 			print(Status)#print status to terminal
+			self.of_event.clear()
 
 		self.col.setRed(val)
 		#square will be red when the valve is open and black when closed
 		self.square.setStyleSheet("QFrame { background-color: %s }" % self.col.name())
+
+	#Method to close the valve if overflow
+	def OverflowThread(self):
+		while True:
+			self.of_event.wait()
+			while self.of_event.isSet():
+				temp = self.Temp.get_temp()
+				if temp == self.set_temperature:
+					if of_event.isSet():
+						self.valveb.setChecked(False)
+						self.ln2v.Close()
+						self.of_event.clear()
+						Status = self.ln2v.Status #get the status of the valve
+						print(Status)#print status to terminal
 	
 	#When window is closed
 	def closeEvent(self,event):
-		#GPIO.cleanup()
+		self.ln2v.Close()
 		pass
 
-
-#method to control and launch the window
-#def window():
-#	app = QtGui.QApplication(sys.argv)
-#	ex = LN2_ValveGUI()
-#	sys.exit(app.exec_())
-#
-#if __name__ == '__main__':
-#	
-#	#set default variables
-#	PinValve = 17 #GPIO17, pin 11
-#	#Create the valve object
-#	LN2 = ValveControl(PinValve)
-#	#Launch the window
-#	window()
-
+class Temperature(QtCore.QThread):
+	def __init__(self,parent=None):
+		super(Temperature,self).__init__(parent)
+		
+	def run(self):
+		start = time.time()
+		self.lnk = pxssh.pxssh()
+		hostname = '10.212.212.70'
+		username = 'fhire'
+		password = 'WIROfhire17'
+		self.lnk.login(hostname,username,password)
+		end = time.time()
+		print('TCMS RPi connected. Time elapsed: '+str('%.2f'%(end-start))+" seconds")
+		self.lnk.sendline("cd ~/Desktop/FHiRE-TCS/")
+		self.lnk.sendline("python LN2_temp.py")
+		
+	def end_link(self):
+		self.lnk.sendcontrol('c')
+		self.lnk.logout()
+		
+	def get_temp(self):
+		self.lnk.sendline('scp LN2Temp.dat fhire@10.212.212.49:/home/fhire/Desktop/FHiRE-vacuum')
+		time.sleep(3)
+		i = self.lnk.expect('fhire@10.212.212.49\'s password:')
+		if i == 0:
+			self.lnk.sendline(password)
+			time.sleep(3)
+		elif i == 1:
+			pass
+		temp = np.loadtxt('LN2Temp.dat')
+		return temp
 
