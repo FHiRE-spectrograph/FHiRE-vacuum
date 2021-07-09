@@ -282,8 +282,9 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		
 	#Function to update and save the pump_status.dat
 	def op_stat_save(self,status):
-		header = "Operating Status for vacuum system"
-		header += "0 is vent, 1 is pump down"
+		status = float(status)
+		status = np.array(status).reshape(1, )
+		header = "Operating Status for vacuum system: 0 is vent 1 is pump down"
 		np.savetxt('pump_status.dat',status,header=header)
 			
 		
@@ -344,6 +345,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 		
 		self.actionImport.triggered.connect(self.importFile)
 		self.pump_down.clicked.connect(self.pumpDownDialog)
+		self.abort_pump_down.clicked.connect(self.abortPumpDialog)
 		self.vent.clicked.connect(self.ventDialog)
 		self.seal_button.clicked.connect(self.GateValve)
 
@@ -637,7 +639,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 					self.ventThread()
 					self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
 						'#f7d95e;}')
-					self.pumpdown.setStyleSheet('QPushButton#pump_down {background-color : ' \
+					self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
 						'#ffffff;}')
 					self.op_stat_save(0)
 				elif vvStat == 4:
@@ -646,7 +648,7 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 					self.ventThread()
 					self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
 						'#f7d95e;}')
-					self.pumpdown.setStyleSheet('QPushButton#pump_down {background-color : ' \
+					self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
 						'#ffffff;}')
 					self.op_stat_save(0)
 				else:
@@ -690,6 +692,47 @@ class MainUiClass(QtGui.QMainWindow, adminGUI.Ui_MainWindow):
 			msg.setText('Open Gate Valve before pumping down')
 			msg.setWindowTitle('Pump Down Warning')
 			msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+
+	# Warning message for aborting pump down
+	def abortPumpDialog(self):
+		vvStat = self.vac_valve.Status()
+		msg = QtGui.QMessageBox(self.centralwidget)
+		msg.setIcon(QtGui.QMessageBox.Warning)
+		msg.setText('Are you sure you want to abort the pump down? ' \
+		    'This will vent the system back to atmosphere.')
+		msg.setWindowTitle('Pump Down Abort Warning')
+		msg.setStandardButtons(QtGui.QMessageBox.Ok | QtGui.QMessageBox.Cancel)
+		msg.setDefaultButton(QtGui.QMessageBox.Cancel)
+		ret = msg.exec_();
+	
+		if ret == QtGui.QMessageBox.Ok:
+			printInfo('Aborting Pump Down Procedure...')
+			if vvStat == 3:		
+				self.tic.Neg_off()
+				self.tic.Ion_off()	
+				self.ventThread()
+				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+					'#f7d95e;}')
+				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+					'#ffffff;}')
+				self.op_stat_save(0)
+			elif vvStat == 4:
+				self.tic.Neg_off()
+				self.tic.Ion_off()
+				self.tic.Backing_on()
+				self.vac_valve.Toggle()
+				self.ventThread()
+				self.vent.setStyleSheet('QPushButton#vent {background-color : ' \
+					'#f7d95e;}')
+				self.pump_down.setStyleSheet('QPushButton#pump_down {background-color : ' \
+					'#ffffff;}')
+				self.op_stat_save(0)
+			else:
+				printInfo('Can not abort pump down: gate valve is not open or closed')
+				
+		elif ret == QtGui.QMessageBox.Cancel:
+			printInfo('Continuing Pump Down')
+		
 
 	# Importing data from a .dat file.
 	def importFile(self):
@@ -963,6 +1006,9 @@ class TIC(QtCore.QObject):
 
 		self.pressure_reading = None
 		self.ion_pressure_reading = None
+		
+		# Event to set when venting, will kill the pump down thread
+		self.vent_event = threading.Event()
 
 	# General TIC write message and read response.
 	def write_msg(self, message):
@@ -1101,8 +1147,11 @@ class TIC(QtCore.QObject):
 		printInfo('Pump_down')
 		self.Backing_on()
 		while self.pressure_reading > 0.00133:
-			printInfo('sleeping back.')
-			time.sleep(10)
+			if self.vent_event.isSet():
+				return
+			else:
+				printInfo('sleeping back (pump down).')
+				time.sleep(10)
 		self.Turbo_on()
 		#
 		# Uncomment the following to pump down automatically
@@ -1111,23 +1160,31 @@ class TIC(QtCore.QObject):
 		# pressure values in mbar.
 				
 		while self.pressure_reading > 1.33e-5:
-			printInfo('sleeping turbo.')
-			time.sleep(10)
+			if self.vent_event.isSet():
+				return
+			else:
+				printInfo('sleeping turbo.')
+				time.sleep(10)
 		self.Neg_on()
-		time.sleep(1)  # define hour!
+		time.sleep(3600)  # define hour!
 		self.Neg_off()
 		while self.pressure_reading > 1.33e-5:
-			printInfo('sleeping ion.')
-			time.sleep(10)
+			if self.vent_event.isSet():
+				return
+			else:
+				printInfo('sleeping ion.')
+				time.sleep(10)
 		self.Ion_on()
 
 	# Automated vent procedure.
 	def Vent(self):	
+		self.vent_event.set()
 		self.Turbo_off()
 		while self.pressure_reading < 6 * 1.33:
-			printInfo('sleeping back.')
+			printInfo('sleeping back (vent).')
 			time.sleep(10)
 		self.Backing_off()
+		self.vent_event.clear()
 
 	# General NEXTorr write message and read response.
 	@QtCore.pyqtSlot()
